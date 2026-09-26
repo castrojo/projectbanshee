@@ -15,7 +15,8 @@ class YouTubeMusicSource(AudioSource):
         if not os.path.exists(self._yt_dlp):
             self._yt_dlp = "yt-dlp"
 
-        self.config_dir = os.path.expanduser("~/.config/banshee")
+        from gi.repository import GLib
+        self.config_dir = os.path.join(GLib.get_user_config_dir(), "banshee")
         os.makedirs(self.config_dir, exist_ok=True)
         self.cookies_path = cookies_path or os.path.join(self.config_dir, "ytm_cookies.txt")
 
