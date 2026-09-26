@@ -4,12 +4,12 @@ A modern, ultra-compact GTK4 and Libadwaita music player focused exclusively on 
 
 ## 1. User Stories & Experience
 
-- **As a desktop user**, I want Banshee to open in a compact "Mini Mode" toolbar (~380x82px) that sits unobtrusively on my screen, optionally pinned above other windows.
+- **As a desktop user**, I want Banshee to open in a compact "Mini Mode" toolbar (~380x82px) that sits unobtrusively on my screen.
 - **As a listener**, I want to search tracks via a clean popover, queue songs, view album art, play/pause, skip, scrub tracks, and adjust volume immediately without logging in.
-- **As a YouTube Music user**, I want to optionally log in:
-  - First via an embedded WebKitGTK window (*Unverified / Experimental due to Google WebView restrictions*).
-  - Or via one-click "Import from Browser" (`--cookies-from-browser`) or selecting an exported Netscape `cookies.txt` file.
-  - When authenticated, access Liked Music and personal library.
+- **As a YouTube Music user**, I want to optionally import my session:
+  - Open YouTube Music in the default browser to log in via Google.
+  - One-click "Import Browser Session" from installed Flatpak browsers (Firefox, Brave, Chrome).
+  - Or manually load an exported Netscape `cookies.txt` file.
 - **As a GNOME user**, I want the player to appear in the GNOME Shell notification tray and respond to media keys / `playerctl` via standard MPRIS D-Bus interfaces.
 
 ## 2. Architecture & Modules
@@ -28,7 +28,7 @@ src/banshee/
 │   ├── search_popover.py# Search input, results list, add-to-queue actions
 │   ├── queue_popover.py # Playback queue list, current track indicator, clear/remove
 │   ├── volume_popover.py# Volume slider, mute toggle
-│   └── auth_dialog.py   # Dual-mode auth dialog (WebKit webview + browser/file import)
+│   └── auth_dialog.py   # Auth dialog with browser open, Flatpak import, and cookie file loader
 ├── mpris.py             # org.mpris.MediaPlayer2 D-Bus service export
 └── config.py            # Local state (~/.config/banshee/settings.json, cookies.txt)
 ```
@@ -40,7 +40,7 @@ src/banshee/
   - Left: 64x64 Cover art / thumbnail (rounded corners via CSS).
   - Center: Vertical box with Track Title (bold, ellipsize end), Artist & Album (dim label), and thin interactive scrub bar + time labels (`01:23 / 03:45`).
   - Right: Playback controls: Previous, Play/Pause (prominent primary button), Next.
-  - Header / Action icons: Search popover button, Queue popover button, Volume popover button, Pin / Keep-on-top toggle, Login status button.
+  - Header / Action icons: Search popover button, Queue popover button, Volume popover button, Login / Auth dialog button.
 
 ## 4. GNOME Compliance
 

@@ -10,4 +10,4 @@ In Mini Mode, library interactions (searching tracks, inspecting/reordering queu
 1. `SearchPopover`: Gtk.SearchEntry with debounced search query triggering `source.search()`. Results displayed in an `Adw.PreferencesGroup` or `Gtk.ListView` with "+ Queue" and "Play Now" action rows.
 2. `QueuePopover`: Displays active queue, highlights currently playing track, allows removing tracks and clearing queue.
 3. `VolumePopover`: Compact vertical/horizontal volume slider with mute/unmute button.
-4. `AuthDialog`: Dialog with WebKitGTK login option (marked experimental) plus one-click "Import from Browser" (Firefox, Chrome, Brave) and "Choose cookies.txt file" buttons.
+4. `AuthDialog`: Dialog with "Open music.youtube.com in Browser" button plus one-click "Import Browser Session" from detected Flatpak browsers (Firefox, Brave, Chrome) and manual "Load Netscape cookies.txt" button.

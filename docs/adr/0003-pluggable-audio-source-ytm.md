@@ -12,8 +12,8 @@ Furthermore, on modern Linux systems (such as Project Bluefin), browsers like Fi
    - Do not embed a WebView or attempt to render Google account login dialogues inside Banshee.
 2. **"Open in Browser" + Native/Flatpak Import**:
    - Provide a direct "Open music.youtube.com in Browser" button that delegates to the user's real desktop browser via `xdg-open`.
-   - Automatically detect Flatpak browser cookie profiles (e.g. `~/.var/app/org.mozilla.firefox/config/mozilla/firefox/*.default*/cookies.sqlite`) as well as standard host profiles.
-   - Import the session via `yt-dlp --cookies-from-browser` directly into `GLib.get_user_config_dir()/banshee/ytm_cookies.txt`.
+   - Automatically detect Flatpak browser cookie profiles (e.g. `~/.var/app/org.mozilla.firefox/config/mozilla/firefox/*.default*/cookies.sqlite`, Brave, Chrome).
+   - Import the session via `yt-dlp --cookies-from-browser` directly into `GLib.get_user_config_dir()/banshee/ytm_cookies.txt`, filtering lines strictly to `.youtube.com` and `.google.com` (0600 file permissions).
    - Provide a manual Netscape `cookies.txt` file chooser for custom setups.
 3. **Flatpak Permissions**:
    - Grant read-only access in `org.projectbluefin.Banshee.yaml` to Flatpak browser directories (`--filesystem=~/.var/app/org.mozilla.firefox:ro`, etc.) to permit cookie import inside the sandbox.
