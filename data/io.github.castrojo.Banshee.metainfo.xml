@@ -3,17 +3,16 @@
   <id>io.github.castrojo.Banshee</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>Banshee</name>
-  <summary>Modern Mini Mode Music Player for GNOME</summary>
-  <url type="homepage">https://github.com/castrojo/banshee</url>
-  <url type="bugtracker">https://github.com/castrojo/banshee/issues</url>
+  <name>Project Banshee</name>
+  <summary>Mini Mode music player inspired by the classic Banshee player</summary>
+  <url type="homepage">https://github.com/castrojo/projectbanshee</url>
+  <url type="bugtracker">https://github.com/castrojo/projectbanshee/issues</url>
   <developer id="io.github.castrojo">
     <name>Jorge O. Castro</name>
   </developer>
   <description>
     <p>
-      Banshee is a minimalist, ultra-compact music player built around the iconic Mini Mode.
-      It streams directly from YouTube Music and other modern streaming backends with zero local library overhead.
+      Project Banshee is an independent GTK4/libadwaita music player inspired by the classic Banshee player. It starts in compact Mini Mode and streams YouTube audio; it is not affiliated with the original project.
     </p>
   </description>
   <launchable type="desktop-id">io.github.castrojo.Banshee.desktop</launchable>

@@ -147,7 +147,7 @@ class MPRISService:
                 "CanQuit": GLib.Variant("b", True),
                 "CanRaise": GLib.Variant("b", True),
                 "HasTrackList": GLib.Variant("b", False),
-                "Identity": GLib.Variant("s", "Banshee"),
+                "Identity": GLib.Variant("s", "Project Banshee"),
                 "DesktopEntry": GLib.Variant("s", "io.github.castrojo.Banshee"),
                 "SupportedUriSchemes": GLib.Variant("as", ["http", "https"]),
                 "SupportedMimeTypes": GLib.Variant("as", ["audio/mpeg", "audio/ogg", "audio/webm"])

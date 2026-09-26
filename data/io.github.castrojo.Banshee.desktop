@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Banshee
-Comment=Modern Mini Mode Music Player for GNOME
+Name=Project Banshee
+Comment=Mini Mode music player inspired by the classic Banshee player
 Exec=banshee
 Icon=io.github.castrojo.Banshee
 Terminal=false

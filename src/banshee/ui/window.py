@@ -1,5 +1,5 @@
 """
-Iconic Banshee Mini Mode Window implementation using GTK4 and Libadwaita.
+Project Banshee - GTK4 / Libadwaita Mini Mode Window
 """
 import os
 import threading
@@ -47,7 +47,7 @@ CSS_STYLING = """
 
 class MiniModeWindow(Adw.ApplicationWindow):
     def __init__(self, app, player, queue, source):
-        super().__init__(application=app, title="Banshee")
+        super().__init__(application=app, title="Project Banshee")
         self.player = player
         self.queue = queue
         self.source = source

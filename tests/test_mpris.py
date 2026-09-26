@@ -53,7 +53,7 @@ class TestMPRISService(unittest.TestCase):
         desktop_entry = self.mpris._handle_get_property(
             None, None, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2", "DesktopEntry"
         )
-        self.assertEqual(identity.get_string(), "Banshee")
+        self.assertEqual(identity.get_string(), "Project Banshee")
         self.assertEqual(desktop_entry.get_string(), "io.github.castrojo.Banshee")
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
-# Banshee
+# Project Banshee
 
-A small GTK4/libadwaita music player that opens in a compact Banshee-inspired Mini Mode. It streams YouTube audio through GStreamer; it does not play local music. The original Banshee application icon is retained as a throwback.
+Project Banshee is an independent continuation in spirit of the classic Banshee media player, built with GTK4 and libadwaita. It opens in a compact Mini Mode and streams YouTube audio through GStreamer. It does not play local music and is not affiliated with the original Banshee project.
 
 ## Install
 
-Download `io.github.castrojo.Banshee.flatpak` from the [GitHub Releases](https://github.com/castrojo/banshee/releases), then install it:
+Download `io.github.castrojo.Banshee.flatpak` from the [GitHub Releases](https://github.com/castrojo/projectbanshee/releases), then install it:
 
 ```sh
 flatpak install --user --bundle ./io.github.castrojo.Banshee.flatpak
