@@ -16,6 +16,6 @@ Furthermore, on modern Linux systems (such as Project Bluefin), browsers like Fi
    - Import the session via `yt-dlp --cookies-from-browser` directly into `GLib.get_user_config_dir()/banshee/ytm_cookies.txt`, filtering lines strictly to `.youtube.com` and `.google.com` (0600 file permissions).
    - Provide a manual Netscape `cookies.txt` file chooser for custom setups.
 3. **Flatpak Permissions**:
-   - Grant read-only access in `org.projectbluefin.Banshee.yaml` to Flatpak browser directories (`--filesystem=~/.var/app/org.mozilla.firefox:ro`, etc.) to permit cookie import inside the sandbox.
+   - Grant read-only access in `io.github.castrojo.Banshee.yaml` to Flatpak browser profile directories.
 4. **Anonymous Fallback**:
    - Search and playback remain fully operational without any login.

@@ -7,11 +7,11 @@ Accepted
 Online audio from YouTube Music has ephemeral URLs that expire within hours. We need low-latency, glitch-free audio playback with seek support, volume, and state notification.
 
 ## Decision
-Validated via `.scratch/prototype_gst_ytm.py`:
+Host smoke test selected an HTTPS audio format with yt-dlp and passed it to GStreamer.
 1. Use GStreamer `playbin3` (falling back to `playbin` if unavailable).
 2. Resolve audio stream URL dynamically prior to play.
 3. Hook GstBus signals for state transitions (`PLAYING`, `PAUSED`, `STOPPED`, `BUFFERING`) and stream position/duration queries.
 4. Pass resolved HTTPS stream URL directly to GStreamer's `uri` property.
 
 ## Verification
-Prototype verified in 5.92s: resolved stream URL, initialized playbin3, buffered and decoded 2.1s of audio cleanly through the GStreamer pipeline without error.
+The host-side GStreamer smoke test decoded 2.1 seconds of audio. This proves the host pipeline only; it did not exercise search-to-play in the built Flatpak.

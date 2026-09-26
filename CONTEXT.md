@@ -11,6 +11,6 @@ A modern GTK4/Libadwaita music player focused exclusively on Banshee's iconic **
   - `SpotifySource`: (Deferred / Planned) Future backend adhering to the identical `Source` interface.
 - **Queue / Playback Queue**: An ordered list of `Track` models. Supports shuffle, repeat mode (Off, Track, All), manual re-ordering, and search-to-queue.
 - **Track**: Normalized audio metadata struct (`id`, `title`, `artist`, `album`, `duration`, `thumbnail_url`, `stream_url`, `source_name`).
-- **Flatpak Browser Session Bridge**: Authentication flow delegating to the user's default browser via `xdg-open`, importing the authenticated session cookies directly from Flatpak browser profiles into `~/.var/app/org.projectbluefin.Banshee/config/banshee/ytm_cookies.txt` (filtered strictly to Google/YouTube domains).
+- **Flatpak Browser Session Bridge**: Authentication flow delegating to the user's default browser via `xdg-open`, importing authenticated cookies from Flatpak browser profiles into the app-scoped config directory (filtered to Google/YouTube domains).
 - **MPRIS Service**: Full implementation of `org.mpris.MediaPlayer2` and `org.mpris.MediaPlayer2.Player` D-Bus interfaces to integrate with GNOME Shell top-bar/notifications, media keys, and `playerctl`.
 - **GNOME Compliance**: Adherence to GNOME Human Interface Guidelines (HIG): Libadwaita styling, dark/light style manager synchronization, standard keyboard shortcuts, AppStream metadata, desktop action hooks, and desktop notification dispatch.

@@ -3,6 +3,7 @@ import os
 import sys
 import unittest
 from unittest.mock import patch, MagicMock
+from tempfile import TemporaryDirectory
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -60,6 +61,35 @@ class TestYouTubeMusicSource(unittest.TestCase):
         track = Track(id="xyz", title="Sample", artist="Artist")
         url = self.source.get_stream_url(track)
         self.assertEqual(url, "https://googlevideo.com/playback_stream")
+
+    def test_filter_cookie_file_keeps_httponly_auth_and_drops_other_domains(self):
+        with TemporaryDirectory() as tmpdir:
+            cookie_path = os.path.join(tmpdir, "cookies.txt")
+            with open(cookie_path, "w") as cookie_file:
+                cookie_file.write("# Netscape HTTP Cookie File\n")
+                cookie_file.write("#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t1999999999\tSAPISID\tfake-secret\n")
+                cookie_file.write("#HttpOnly_accounts.google.com\tFALSE\t/\tTRUE\t1999999999\t__Secure-3PSID\tfake-secret\n")
+                cookie_file.write("discord.com\tFALSE\t/\tTRUE\t1999999999\tcf_clearance\tfake-secret\n")
+                cookie_file.write("evilyoutube.com\tFALSE\t/\tTRUE\t1999999999\tSID\tfake-secret\n")
+                cookie_file.write(".youtube.com\tTRUE\t/\tTRUE\t1999999999\tSID\tfake-secret\tLax\n")
+
+            self.assertTrue(self.source._filter_cookies_file(cookie_path))
+            self.assertEqual(os.stat(cookie_path).st_mode & 0o777, 0o600)
+            with open(cookie_path) as cookie_file:
+                saved = cookie_file.read()
+            self.assertIn("#HttpOnly_.youtube.com", saved)
+            self.assertIn("#HttpOnly_accounts.google.com", saved)
+            self.assertNotIn("discord.com", saved)
+            self.assertNotIn("evilyoutube.com", saved)
+            self.assertNotIn("\tLax", saved)
+
+    def test_filter_cookie_file_requires_auth_cookie(self):
+        with TemporaryDirectory() as tmpdir:
+            cookie_path = os.path.join(tmpdir, "cookies.txt")
+            with open(cookie_path, "w") as cookie_file:
+                cookie_file.write(".youtube.com\tTRUE\t/\tTRUE\t1999999999\tVISITOR_INFO1_LIVE\tvisitor\n")
+
+            self.assertFalse(self.source._filter_cookies_file(cookie_path))
 
 if __name__ == "__main__":
     unittest.main()

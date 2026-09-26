@@ -44,9 +44,9 @@ src/banshee/
 
 ## 4. GNOME Compliance
 
-- ID: `org.projectbluefin.Banshee`
-- Full Desktop Entry (`org.projectbluefin.Banshee.desktop`) with category `AudioVideo;Audio;Player;`
-- AppStream Metainfo (`org.projectbluefin.Banshee.metainfo.xml`)
-- SVG App Icon (`org.projectbluefin.Banshee.svg`)
+- ID: `io.github.castrojo.Banshee`
+- Full Desktop Entry (`io.github.castrojo.Banshee.desktop`) with category `AudioVideo;Audio;Player;`
+- AppStream Metainfo (`io.github.castrojo.Banshee.metainfo.xml`)
+- SVG App Icon (`io.github.castrojo.Banshee.svg`)
 - MPRIS v2 compliance: responds to `Play`, `Pause`, `PlayPause`, `Next`, `Previous`, `Stop`, `Seek`, `SetPosition`, `Volume`, `Metadata`.
 - Pytest suite testing model invariants, queue ordering, source interface, and MPRIS metadata dictionary generation.

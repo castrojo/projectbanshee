@@ -11,9 +11,7 @@ from banshee.sources.base import AudioSource
 
 class YouTubeMusicSource(AudioSource):
     def __init__(self, cookies_path: Optional[str] = None):
-        self._yt_dlp = shutil.which("yt-dlp") or "/home/linuxbrew/.linuxbrew/bin/yt-dlp"
-        if not os.path.exists(self._yt_dlp):
-            self._yt_dlp = "yt-dlp"
+        self._yt_dlp = shutil.which("yt-dlp") or "yt-dlp"
 
         from gi.repository import GLib
         self.config_dir = os.path.join(GLib.get_user_config_dir(), "banshee")
@@ -96,40 +94,60 @@ class YouTubeMusicSource(AudioSource):
         return urls[-1]
 
     def get_detected_browsers(self) -> dict[str, str]:
-        """Detect available desktop and Flatpak browsers."""
+        """Detect Flatpak browser profiles without probing native host paths."""
+        import configparser
         import glob
+
         browsers = {}
-        
-        # Check Flatpak Firefox
-        ff_dirs = glob.glob(os.path.expanduser("~/.var/app/org.mozilla.firefox/config/mozilla/firefox/*.default*"))
-        for p in ff_dirs:
-            if os.path.exists(os.path.join(p, "cookies.sqlite")):
-                browsers["Firefox (Flatpak)"] = f"firefox:{p}"
-                break
+        flatpak_root = os.path.expanduser("~/.var/app")
 
-        # Check Flatpak Brave
-        brave_dirs = glob.glob(os.path.expanduser("~/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/*"))
-        for p in brave_dirs:
-            if os.path.exists(os.path.join(p, "Cookies")) or os.path.exists(os.path.join(p, "Network", "Cookies")):
-                browsers["Brave (Flatpak)"] = f"brave:{p}"
-                break
+        firefox_root = os.path.join(flatpak_root, "org.mozilla.firefox/config/mozilla/firefox")
+        profiles_ini = os.path.join(firefox_root, "profiles.ini")
+        profiles = configparser.ConfigParser()
+        if profiles.read(profiles_ini):
+            profile_sections = [s for s in profiles.sections() if s.startswith("Profile")]
+            default_paths = []
+            for section in profiles.sections():
+                if section.startswith("Install"):
+                    path = profiles.get(section, "Default", fallback=None)
+                    if path:
+                        default_paths.append(path)
+            for section in profile_sections:
+                if profiles.getboolean(section, "Default", fallback=False):
+                    path = profiles.get(section, "Path", fallback=None)
+                    if path:
+                        default_paths.append(path)
+            for profile in default_paths:
+                profile_path = profile if os.path.isabs(profile) else os.path.join(firefox_root, profile)
+                if os.path.isfile(os.path.join(profile_path, "cookies.sqlite")):
+                    browsers["Firefox (Flatpak)"] = f"firefox:{profile_path}"
+                    break
 
-        # Check Flatpak Chrome
-        chrome_dirs = glob.glob(os.path.expanduser("~/.var/app/com.google.Chrome/config/google-chrome/*"))
-        for p in chrome_dirs:
-            if os.path.exists(os.path.join(p, "Cookies")) or os.path.exists(os.path.join(p, "Network", "Cookies")):
-                browsers["Chrome (Flatpak)"] = f"chrome:{p}"
-                break
+        def add_chromium_profile(label: str, browser: str, root: str) -> None:
+            candidates = [os.path.join(root, "Default")]
+            candidates.extend(sorted(glob.glob(os.path.join(root, "Profile *"))))
+            for profile in candidates:
+                if os.path.isfile(os.path.join(profile, "Cookies")) or os.path.isfile(os.path.join(profile, "Network", "Cookies")):
+                    browsers[label] = f"{browser}:{profile}"
+                    return
 
+        add_chromium_profile(
+            "Brave (Flatpak)", "brave",
+            os.path.join(flatpak_root, "com.brave.Browser/config/BraveSoftware/Brave-Browser")
+        )
+        add_chromium_profile(
+            "Chrome (Flatpak)", "chrome",
+            os.path.join(flatpak_root, "com.google.Chrome/config/google-chrome")
+        )
         return browsers
 
     def import_browser_cookies(self, browser_spec: str) -> bool:
-        """Import cookies directly from browser or flatpak profile using yt-dlp."""
+        """Import Flatpak browser cookies into a filtered, private app jar."""
         import tempfile
+
         fd, tmp_path = tempfile.mkstemp(dir=self.config_dir, prefix="ytm_import_", suffix=".txt")
-        os.close(fd)
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        with os.fdopen(fd, "w") as temp_file:
+            temp_file.write("# Netscape HTTP Cookie File\n")
 
         cmd = [
             self._yt_dlp,
@@ -141,14 +159,14 @@ class YouTubeMusicSource(AudioSource):
         ]
         try:
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
-            if res.returncode == 0 and os.path.exists(tmp_path):
-                ok = self._filter_cookies_file(source_file=tmp_path)
-                if ok:
-                    os.replace(tmp_path, self.cookies_path)
-                return ok
-            return False
-        except Exception as e:
-            print(f"[Cookie Import Warning] Exception during import: {type(e).__name__}: {e}")
+            if res.returncode != 0 or not os.path.exists(tmp_path):
+                return False
+            if not self._filter_cookies_file(source_file=tmp_path):
+                return False
+            os.replace(tmp_path, self.cookies_path)
+            return True
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"[Cookie Import Warning] {type(e).__name__}")
             return False
         finally:
             if os.path.exists(tmp_path):
@@ -158,46 +176,64 @@ class YouTubeMusicSource(AudioSource):
                     pass
 
     def _filter_cookies_file(self, source_file: str) -> bool:
-        """Retain only valid 7-field google/youtube cookies in strict Netscape format."""
+        """Keep only valid Google/YouTube cookies and atomically write them mode 0600."""
+        import tempfile
+
         if not os.path.exists(source_file):
             return False
-        kept_lines = [
-            "# Netscape HTTP Cookie File\n",
-            "# This file is generated by Banshee. Do not edit.\n\n"
-        ]
-        has_auth_cookie = False
+        kept_lines = ["# Netscape HTTP Cookie File\n", "# Filtered by Banshee.\n\n"]
         auth_cookie_names = {"sid", "sapisid", "__secure-3psid", "__secure-1psid", "login_info"}
+        has_auth_cookie = False
 
-        with open(source_file, "r", errors="ignore") as f:
-            for line in f:
+        with open(source_file, "r", errors="ignore") as cookie_file:
+            for line in cookie_file:
                 raw = line.rstrip("\r\n")
                 if not raw or (raw.startswith("#") and not raw.startswith("#HttpOnly_")):
                     continue
                 parts = raw.split("\t")
-                if len(parts) >= 7:
-                    domain_field = parts[0]
-                    clean_domain = domain_field
-                    if clean_domain.startswith("#HttpOnly_"):
-                        clean_domain = clean_domain[len("#HttpOnly_"):]
-                    clean_domain = clean_domain.lower().lstrip(".")
+                if len(parts) != 7:
+                    continue
 
-                    if clean_domain.endswith(("youtube.com", "google.com")):
-                        norm_line = "\t".join(parts[:7]) + "\n"
-                        kept_lines.append(norm_line)
-                        cookie_name = parts[5].lower()
-                        if cookie_name in auth_cookie_names:
-                            has_auth_cookie = True
+                domain_field = parts[0]
+                clean_domain = domain_field.removeprefix("#HttpOnly_").lower().lstrip(".")
+                if not (
+                    clean_domain == "youtube.com"
+                    or clean_domain.endswith(".youtube.com")
+                    or clean_domain == "google.com"
+                    or clean_domain.endswith(".google.com")
+                ):
+                    continue
 
-        with open(source_file, "w") as f:
-            f.writelines(kept_lines)
-        os.chmod(source_file, 0o600)
+                kept_lines.append("\t".join(parts) + "\n")
+                if parts[5].lower() in auth_cookie_names:
+                    has_auth_cookie = True
+
+        fd, filtered_path = tempfile.mkstemp(dir=os.path.dirname(source_file), prefix="ytm_filtered_", suffix=".txt")
+        try:
+            with os.fdopen(fd, "w") as filtered_file:
+                filtered_file.writelines(kept_lines)
+            os.chmod(filtered_path, 0o600)
+            os.replace(filtered_path, source_file)
+        finally:
+            if os.path.exists(filtered_path):
+                os.remove(filtered_path)
         return has_auth_cookie
 
     def load_cookie_file(self, source_path: str) -> bool:
-        """Copy a selected Netscape cookies.txt file to Banshee config."""
+        """Import an exported Netscape jar without persisting unrelated cookies."""
+        import tempfile
+
+        fd, tmp_path = tempfile.mkstemp(dir=self.config_dir, prefix="ytm_import_", suffix=".txt")
+        os.close(fd)
         try:
-            shutil.copyfile(source_path, self.cookies_path)
-            return self._filter_cookies_file(source_file=self.cookies_path)
-        except Exception as e:
-            print(f"[Cookie Copy Error] {e}")
+            shutil.copyfile(source_path, tmp_path)
+            if not self._filter_cookies_file(source_file=tmp_path):
+                return False
+            os.replace(tmp_path, self.cookies_path)
+            return True
+        except OSError as e:
+            print(f"[Cookie Copy Error] {type(e).__name__}")
             return False
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)

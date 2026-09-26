@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>org.projectbluefin.Banshee</id>
+  <id>io.github.castrojo.Banshee</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>Banshee</name>
   <summary>Modern Mini Mode Music Player for GNOME</summary>
-  <url type="homepage">https://projectbluefin.io</url>
-  <developer id="io.projectbluefin">
-    <name>Project Bluefin</name>
+  <url type="homepage">https://github.com/castrojo/banshee</url>
+  <url type="bugtracker">https://github.com/castrojo/banshee/issues</url>
+  <developer id="io.github.castrojo">
+    <name>Jorge O. Castro</name>
   </developer>
   <description>
     <p>
@@ -15,7 +16,7 @@
       It streams directly from YouTube Music and other modern streaming backends with zero local library overhead.
     </p>
   </description>
-  <launchable type="desktop-id">org.projectbluefin.Banshee.desktop</launchable>
+  <launchable type="desktop-id">io.github.castrojo.Banshee.desktop</launchable>
   <categories>
     <category>AudioVideo</category>
     <category>Audio</category>

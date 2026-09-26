@@ -2,7 +2,7 @@
 Name=Banshee
 Comment=Modern Mini Mode Music Player for GNOME
 Exec=banshee
-Icon=org.projectbluefin.Banshee
+Icon=io.github.castrojo.Banshee
 Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Player;

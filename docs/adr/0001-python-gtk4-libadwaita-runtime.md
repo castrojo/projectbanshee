@@ -4,20 +4,11 @@
 Accepted
 
 ## Context
-The application requires:
-1. Native GTK4 and Libadwaita integration for GNOME 4 compliance.
-2. Robust, low-latency audio streaming and decoding via GStreamer.
-3. Fast metadata extraction and audio stream resolution using `yt-dlp` without heavy compilation steps.
-
-Environment verification confirmed:
-- Python 3.12+ with PyGObject bindings for Gtk 4.0, Adw 1, and Gst 1.0 are functional in GNOME runtime.
-- `yt-dlp` is available locally in `/home/linuxbrew/.linuxbrew/bin/yt-dlp` or can be invoked via python subprocessing.
+The application requires GTK4 and Libadwaita, GStreamer playback, and integration with YouTube streaming tools. The workstation is image-based, so development and packaging must use the GNOME SDK/Platform instead of host development headers or pip installs.
 
 ## Decision
-Build Banshee using Python 3, PyGObject (`Gtk 4.0`, `Adw 1`, `Gst 1.0`), and standard Meson build system.
+Python 3 with PyGObject and Meson is selected on the user's behalf. It keeps the GTK/GStreamer layer in the GNOME SDK and allows using yt-dlp's supported Python package; the Flatpak manifest bundles yt-dlp, its EJS scripts, and Deno.
 
 ## Consequences
-- Immediate development velocity with no C/Rust compilation bottlenecks.
-- Full access to all modern Libadwaita widgets (`Adw.ApplicationWindow`, `Adw.HeaderBar`, `Adw.StyleManager`).
-- Seamless D-Bus integration via `Gio.DBusExportedObject` for MPRIS.
-- Easy distribution and Flatpak packaging via `gnome-runtime` SDK.
+- The GNOME SDK supplies GTK4, Libadwaita, GStreamer, Python, PyGObject, Meson, and Ninja; host development packages are not required.
+- yt-dlp, yt-dlp-ejs, and Deno are packaged with the Flatpak for YouTube challenge solving.

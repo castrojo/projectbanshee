@@ -27,7 +27,7 @@ class TestMPRISService(unittest.TestCase):
 
     def test_metadata_generation(self):
         track = Track(
-            id="abc12345",
+            id="video-id-with-hyphen",
             title="Starboy",
             artist="The Weeknd",
             album="Starboy",
@@ -43,11 +43,18 @@ class TestMPRISService(unittest.TestCase):
         self.assertEqual(meta["xesam:album"].get_string(), "Starboy")
         self.assertEqual(meta["mpris:length"].get_int64(), 230500000)
         self.assertEqual(meta["mpris:artUrl"].get_string(), "https://example.com/art.jpg")
+        self.assertEqual(meta["mpris:trackId"].unpack(), "/org/mpris/MediaPlayer2/track/video_2did_2dwith_2dhyphen")
 
-        res = self.mpris._handle_get_property(
+
+    def test_property_get(self):
+        identity = self.mpris._handle_get_property(
             None, None, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2", "Identity"
         )
-        self.assertEqual(res.get_string(), "Banshee")
+        desktop_entry = self.mpris._handle_get_property(
+            None, None, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2", "DesktopEntry"
+        )
+        self.assertEqual(identity.get_string(), "Banshee")
+        self.assertEqual(desktop_entry.get_string(), "io.github.castrojo.Banshee")
 
 if __name__ == "__main__":
     unittest.main()

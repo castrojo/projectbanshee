@@ -10,6 +10,6 @@ Full GNOME 4 integration requires exporting `org.mpris.MediaPlayer2` and `org.mp
 1. Export `org.mpris.MediaPlayer2` and `org.mpris.MediaPlayer2.Player` on `org.mpris.MediaPlayer2.banshee`.
 2. Support MPRIS properties: `PlaybackStatus`, `Metadata` (`mpris:trackId`, `xesam:title`, `xesam:artist`, `xesam:album`, `mpris:length`, `mpris:artUrl`), `Volume`, `Position`, `CanPlay`, `CanPause`, `CanGoNext`, `CanGoPrevious`, `CanSeek`.
 3. Support MPRIS methods: `Play`, `Pause`, `PlayPause`, `Next`, `Previous`, `Stop`, `Seek`, `SetPosition`, `OpenUri`.
-4. Install valid `org.projectbluefin.Banshee.desktop` file verified with `desktop-file-validate`.
-5. Install valid `org.projectbluefin.Banshee.metainfo.xml` verified with `appstreamcli validate`.
+4. Install valid `io.github.castrojo.Banshee.desktop` file verified with `desktop-file-validate`.
+5. Install valid `io.github.castrojo.Banshee.metainfo.xml` file verified with `appstreamcli validate`.
 6. Install SVG application icon in hicolor theme directory.

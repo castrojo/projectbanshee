@@ -34,12 +34,12 @@ python.install_sources(
 install_data('bin/banshee', install_dir: get_option('bindir'), install_mode: 'rwxr-xr-x')
 
 # Install desktop entry, metainfo, and icons
-install_data('data/org.projectbluefin.Banshee.desktop', install_dir: get_option('datadir') / 'applications')
-install_data('data/org.projectbluefin.Banshee.metainfo.xml', install_dir: get_option('datadir') / 'metainfo')
-install_data('data/icons/hicolor/scalable/apps/org.projectbluefin.Banshee.svg',
+install_data('data/io.github.castrojo.Banshee.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('data/io.github.castrojo.Banshee.metainfo.xml', install_dir: get_option('datadir') / 'metainfo')
+install_data('data/icons/hicolor/scalable/apps/io.github.castrojo.Banshee.svg',
   install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps'
 )
-install_data('data/icons/hicolor/128x128/apps/org.projectbluefin.Banshee.png',
+install_data('data/icons/hicolor/128x128/apps/io.github.castrojo.Banshee.png',
   install_dir: get_option('datadir') / 'icons/hicolor/128x128/apps'
 )
 

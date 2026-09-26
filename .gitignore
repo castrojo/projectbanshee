@@ -7,3 +7,4 @@ build/
 .flatpak-builder/
 repo/
 .pytest_cache/
+*.flatpak

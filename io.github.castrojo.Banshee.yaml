@@ -1,0 +1,51 @@
+app-id: io.github.castrojo.Banshee
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: banshee
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --own-name=org.mpris.MediaPlayer2.banshee
+  - --talk-name=org.freedesktop.secrets
+  # Restrict imports to Flatpak browser profile stores, not entire browser sandboxes.
+  - --filesystem=~/.var/app/org.mozilla.firefox/config/mozilla/firefox:ro
+  - --filesystem=~/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser:ro
+  - --filesystem=~/.var/app/com.google.Chrome/config/google-chrome:ro
+modules:
+  - name: python3-yt-dlp
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links=file://$(pwd) --prefix=/app yt_dlp
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl
+        sha256: 1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf
+
+  - name: python3-yt-dlp-ejs-deno
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links=file://$(pwd) --prefix=/app yt-dlp-ejs==0.8.0 deno==2.9.5
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/e3/bd/520769863744b669440a924271a6159ddd82ad5ae26b4ac4d4b69e9f8d44/yt_dlp_ejs-0.8.0-py3-none-any.whl
+        sha256: 79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4
+      - type: file
+        url: https://files.pythonhosted.org/packages/60/54/c6e0fb4b5e96dd7611bc75c8137046d7436666bd2e278f686e36d6a805af/deno-2.9.5-py3-none-manylinux_2_27_x86_64.whl
+        sha256: e5aec0419739fd0359663a78765d4feda19d1d0b60a682d25add9b78e19f95b4
+        only-arches: [x86_64]
+      - type: file
+        url: https://files.pythonhosted.org/packages/a4/b4/5d462bc738b2172043a470ab97d7b6f3e7a287fa1916065e777e034ef1b1/deno-2.9.5-py3-none-manylinux_2_27_aarch64.whl
+        sha256: bccec0965917b6daa323f9ce6ad8e884e0854506b0cdaec9de41bdac7620109a
+        only-arches: [aarch64]
+
+  - name: banshee
+    buildsystem: meson
+    sources:
+      - type: dir
+        path: .
+        skip: [.git, .scratch, .flatpak-builder, build, builddir, repo]
