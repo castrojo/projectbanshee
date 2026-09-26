@@ -189,7 +189,7 @@ class MiniModeWindow(Adw.ApplicationWindow):
         self.player.connect("state-changed", lambda p, s: self._on_player_state_changed(s))
         self.player.connect("position-changed", lambda p, pos, dur: self._on_player_position_changed(pos, dur))
         self.player.connect("track-finished", lambda p: self._on_next())
-
+        self.player.connect("playback-error", lambda p, msg: self._on_playback_error(msg))
     def _load_css(self):
         provider = Gtk.CssProvider()
         provider.load_from_data(CSS_STYLING.encode('utf-8'))
@@ -200,12 +200,19 @@ class MiniModeWindow(Adw.ApplicationWindow):
         )
 
     def _on_toggle_pin(self, btn):
+        # On Wayland, compositor policy determines always-on-top; users can also use Alt+Space -> Always on Top.
         self.is_pinned = not self.is_pinned
         btn.set_icon_name("view-pin-symbolic")
         if self.is_pinned:
             btn.add_css_class("accent")
         else:
             btn.remove_css_class("accent")
+
+    def _on_playback_error(self, err_msg: str):
+        def update():
+            self.lbl_artist.set_text(f"Error: {err_msg}")
+            self.btn_play.set_icon_name("media-playback-start-symbolic")
+        GLib.idle_add(update)
 
     def _open_auth_dialog(self, btn):
         dialog = AuthDialog(self, self.source, self._on_auth_changed)
