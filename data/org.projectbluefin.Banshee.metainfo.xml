@@ -6,7 +6,6 @@
   <name>Banshee</name>
   <summary>Modern Mini Mode Music Player for GNOME</summary>
   <url type="homepage">https://projectbluefin.io</url>
-  <url type="bugtracker">https://github.com/projectbluefin/common/issues</url>
   <developer id="io.projectbluefin">
     <name>Project Bluefin</name>
   </developer>

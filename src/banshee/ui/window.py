@@ -51,7 +51,6 @@ class MiniModeWindow(Adw.ApplicationWindow):
         self.player = player
         self.queue = queue
         self.source = source
-        self.is_pinned = False
         self._user_seeking = False
 
         self._load_css()
@@ -68,13 +67,6 @@ class MiniModeWindow(Adw.ApplicationWindow):
         self.headerbar = Adw.HeaderBar()
         self.headerbar.add_css_class("flat")
         self.headerbar.set_show_title(False)
-
-        # Left header: App menu / Pin toggle
-        self.btn_pin = Gtk.Button(icon_name="view-pin-symbolic")
-        self.btn_pin.add_css_class("flat")
-        self.btn_pin.set_tooltip_text("Keep on Top")
-        self.btn_pin.connect("clicked", self._on_toggle_pin)
-        self.headerbar.pack_start(self.btn_pin)
 
         # Right header: Search, Queue, Volume, Auth
         self.btn_search = Gtk.Button(icon_name="edit-find-symbolic")
@@ -199,14 +191,6 @@ class MiniModeWindow(Adw.ApplicationWindow):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-    def _on_toggle_pin(self, btn):
-        # On Wayland, compositor policy determines always-on-top; users can also use Alt+Space -> Always on Top.
-        self.is_pinned = not self.is_pinned
-        btn.set_icon_name("view-pin-symbolic")
-        if self.is_pinned:
-            btn.add_css_class("accent")
-        else:
-            btn.remove_css_class("accent")
 
     def _on_playback_error(self, err_msg: str):
         def update():
