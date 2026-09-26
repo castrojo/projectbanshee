@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Banshee
+Comment=Modern Mini Mode Music Player for GNOME
+Exec=banshee
+Icon=org.projectbluefin.Banshee
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;
+Keywords=music;player;streaming;youtube;minimode;audio;banshee;
+StartupNotify=true
+SingleMainWindow=true

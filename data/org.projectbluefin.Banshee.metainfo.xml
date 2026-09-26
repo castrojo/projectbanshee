@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectbluefin.Banshee</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Banshee</name>
+  <summary>Modern Mini Mode Music Player for GNOME</summary>
+  <url type="homepage">https://projectbluefin.io</url>
+  <url type="bugtracker">https://github.com/projectbluefin/common/issues</url>
+  <developer id="io.projectbluefin">
+    <name>Project Bluefin</name>
+  </developer>
+  <description>
+    <p>
+      Banshee is a minimalist, ultra-compact music player built around the iconic Mini Mode.
+      It streams directly from YouTube Music and other modern streaming backends with zero local library overhead.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.projectbluefin.Banshee.desktop</launchable>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+  <provides>
+    <binary>banshee</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-26"/>
+  </releases>
+</component>

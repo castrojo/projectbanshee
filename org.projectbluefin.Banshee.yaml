@@ -1,0 +1,27 @@
+app-id: org.projectbluefin.Banshee
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: banshee
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --own-name=org.mpris.MediaPlayer2.banshee
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/banshee:create
+modules:
+  - name: banshee
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/banshee /app/bin/banshee
+      - cp -r src/banshee /app/lib/python3.12/site-packages/
+      - install -Dm644 data/org.projectbluefin.Banshee.desktop /app/share/applications/org.projectbluefin.Banshee.desktop
+      - install -Dm644 data/org.projectbluefin.Banshee.metainfo.xml /app/share/metainfo/org.projectbluefin.Banshee.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/org.projectbluefin.Banshee.svg /app/share/icons/hicolor/scalable/apps/org.projectbluefin.Banshee.svg
+    sources:
+      - type: dir
+        path: .
