@@ -12,6 +12,10 @@ finish-args:
   - --device=dri
   - --own-name=org.mpris.MediaPlayer2.banshee
   - --filesystem=xdg-run/dconf
+  # Access flatpak browser profiles for session cookie import
+  - --filesystem=~/.var/app/org.mozilla.firefox:ro
+  - --filesystem=~/.var/app/com.brave.Browser:ro
+  - --filesystem=~/.var/app/com.google.Chrome:ro
 modules:
   - name: python3-yt-dlp
     buildsystem: simple

@@ -1,27 +1,21 @@
-# ADR 0003: Dual-Mode YouTube Music Authentication (WebKit Login + Browser/File Fallback)
+# ADR 0003: Simple Browser-Based YouTube Music Authentication & Flatpak Import
 
 ## Status
-Accepted (Login Status: **UNVERIFIED**)
+Accepted
 
 ## Context
-Google frequently blocks OAuth and password logins inside embedded WebViews (`disallowed_useragent` or "This browser or app may not be secure" error). Relying exclusively on embedded WebKitGTK login creates a fatal failure mode if Google's security heuristics block the prompt.
-
-Live end-to-end authentication against `accounts.google.com` inside WebKitGTK cannot be verified headlessly in CI and remains unproven until a user signs in interactively.
+Google routinely blocks logins originating from embedded WebKitGTK WebViews with security warnings ("This browser or app may not be secure"). Attempting to embed a full Chromium or WebKit browser inside a music player adds huge complexity and breaks Google's bot detection heuristics.
+Furthermore, on modern Linux systems (such as Project Bluefin), browsers like Firefox, Brave, and Chrome run as Flatpaks under `~/.var/app/`.
 
 ## Decision
-Provide a robust dual-path authentication system in Banshee:
-1. **Primary path (WebKitGTK Bridge)**:
-   - Launch an `Adw.Window` containing `WebKit.WebView` with Chrome/Edge desktop User-Agent.
-   - Set persistent cookie storage to `~/.config/banshee/ytm_cookies.txt` using `WebKit.CookiePersistentStorage.TEXT` (Netscape format).
-   - User signs in at `music.youtube.com`.
-   - **Risk**: Google may reject the login as an unsecure browser. Marked **UNVERIFIED**.
-2. **Fallback path (Direct Browser Cookie Extraction / Header Paste)**:
-   - Option A: "Import from Browser" button leveraging `yt-dlp --cookies-from-browser firefox` (or chrome, chromium, brave, edge).
-   - Option B: Direct Netscape `cookies.txt` file picker or raw cookie header paste in Settings for hardened Google accounts.
-3. **Anonymous Fallback (Guaranteed Working)**:
-   - The app remains 100% operational for search, radio, and playback without any login.
-
-## Consequences
-- The app does not hard-depend on embedded Google sign-in working.
-- If embedded sign-in fails or is blocked by Google, users import from their normal desktop browser in one click or paste cookies.
-- Anonymous search and streaming work out of the box with zero configuration.
+1. **Remove embedded WebKit login**:
+   - Do not embed a WebView or attempt to render Google account login dialogues inside Banshee.
+2. **"Open in Browser" + Native/Flatpak Import**:
+   - Provide a direct "Open music.youtube.com in Browser" button that delegates to the user's real desktop browser via `xdg-open`.
+   - Automatically detect Flatpak browser cookie profiles (e.g. `~/.var/app/org.mozilla.firefox/config/mozilla/firefox/*.default*/cookies.sqlite`) as well as standard host profiles.
+   - Import the session via `yt-dlp --cookies-from-browser` directly into `GLib.get_user_config_dir()/banshee/ytm_cookies.txt`.
+   - Provide a manual Netscape `cookies.txt` file chooser for custom setups.
+3. **Flatpak Permissions**:
+   - Grant read-only access in `org.projectbluefin.Banshee.yaml` to Flatpak browser directories (`--filesystem=~/.var/app/org.mozilla.firefox:ro`, etc.) to permit cookie import inside the sandbox.
+4. **Anonymous Fallback**:
+   - Search and playback remain fully operational without any login.

@@ -95,22 +95,53 @@ class YouTubeMusicSource(AudioSource):
             raise RuntimeError(f"No stream found for track {track.id}")
         return urls[-1]
 
-    def import_browser_cookies(self, browser: str = "firefox") -> bool:
-        """Import cookies directly from browser using yt-dlp."""
+    def get_detected_browsers(self) -> dict[str, str]:
+        """Detect available desktop and Flatpak browsers."""
+        import glob
+        browsers = {}
+        
+        # Check Flatpak Firefox
+        ff_dirs = glob.glob(os.path.expanduser("~/.var/app/org.mozilla.firefox/config/mozilla/firefox/*.default*"))
+        for p in ff_dirs:
+            if os.path.exists(os.path.join(p, "cookies.sqlite")):
+                browsers["Firefox (Flatpak)"] = f"firefox:{p}"
+                break
+
+        # Check Flatpak Brave
+        brave_dirs = glob.glob(os.path.expanduser("~/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/*"))
+        for p in brave_dirs:
+            if os.path.exists(os.path.join(p, "Cookies")) or os.path.exists(os.path.join(p, "Network", "Cookies")):
+                browsers["Brave (Flatpak)"] = f"brave:{p}"
+                break
+
+        # Check Flatpak Chrome
+        chrome_dirs = glob.glob(os.path.expanduser("~/.var/app/com.google.Chrome/config/google-chrome/*"))
+        for p in chrome_dirs:
+            if os.path.exists(os.path.join(p, "Cookies")) or os.path.exists(os.path.join(p, "Network", "Cookies")):
+                browsers["Chrome (Flatpak)"] = f"chrome:{p}"
+                break
+
+        return browsers
+
+    def import_browser_cookies(self, browser_spec: str) -> bool:
+        """Import cookies directly from browser or flatpak profile using yt-dlp."""
         cmd = [
             self._yt_dlp,
-            "--cookies-from-browser", browser,
+            "--cookies-from-browser", browser_spec,
+            "--cookies", self.cookies_path,
             "--dump-json",
             "ytsearch1:ping",
             "--no-download"
         ]
         try:
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            return True
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+            if res.returncode == 0 and os.path.exists(self.cookies_path):
+                return True
+            print(f"[Cookie Import Warning] {res.stderr}")
+            return False
         except Exception as e:
             print(f"[Cookie Import Error] {e}")
             return False
-
     def load_cookie_file(self, source_path: str) -> bool:
         """Copy a selected Netscape cookies.txt file to Banshee config."""
         try:

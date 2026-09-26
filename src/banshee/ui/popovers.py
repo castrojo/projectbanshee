@@ -220,71 +220,78 @@ class AuthDialog(Adw.Window):
         self.source = source
         self.on_auth_changed = on_auth_changed
         self.set_title("YouTube Music Login")
-        self.set_default_size(520, 600)
+        self.set_default_size(440, 480)
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         header = Adw.HeaderBar()
+        header.set_show_title(True)
         content.append(header)
 
-        # Tabs / Switcher between Web Login and Fallbacks
-        view_stack = Adw.ViewStack()
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
 
-        # Tab 1: WebKit Sign-in (Experimental)
-        web_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        warn_banner = Adw.Banner(title="Embedded Google sign-in may be blocked by Google heuristics. Use Browser Import if sign-in fails.")
-        warn_banner.set_revealed(True)
-        web_page.append(warn_banner)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_margin_top(20)
+        box.set_margin_bottom(20)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
 
-        self.webview = WebKit.WebView()
-        settings = self.webview.get_settings()
-        settings.set_user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-        
-        # Configure cookie persistence
-        session = self.webview.get_network_session()
-        cm = session.get_cookie_manager()
-        cm.set_persistent_storage(self.source.cookies_path, WebKit.CookiePersistentStorage.TEXT)
+        # Step 1: Open in default browser
+        group_open = Adw.PreferencesGroup(title="1. Log In via Your Browser")
+        group_open.set_description("Open YouTube Music in your desktop browser to log into your Google account:")
+        btn_open_browser = Gtk.Button(label="Open music.youtube.com in Browser")
+        btn_open_browser.add_css_class("suggested-action")
+        btn_open_browser.connect("clicked", self._on_open_browser)
+        group_open.add(btn_open_browser)
+        box.append(group_open)
 
-        self.webview.load_uri("https://music.youtube.com")
-        self.webview.set_vexpand(True)
-        web_page.append(self.webview)
-        view_stack.add_titled(web_page, "webview", "Web Sign-In")
+        # Step 2: Import session
+        self.group_import = Adw.PreferencesGroup(title="2. Import Browser Session")
+        self.group_import.set_description("Import your logged-in YouTube Music session:")
 
-        # Tab 2: Fallback (Browser Import / File)
-        fallback_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        fallback_box.set_margin_top(24)
-        fallback_box.set_margin_bottom(24)
-        fallback_box.set_margin_start(24)
-        fallback_box.set_margin_end(24)
+        detected = self.source.get_detected_browsers()
+        for label, spec in detected.items():
+            btn = Gtk.Button(label=f"Import from {label}")
+            btn.connect("clicked", lambda b, s=spec: self._import_browser(s))
+            self.group_import.add(btn)
 
-        info_lbl = Gtk.Label(label="Import logged-in YouTube Music session from your installed desktop browser:")
-        info_lbl.set_wrap(True)
-        fallback_box.append(info_lbl)
+        box.append(self.group_import)
 
-        for browser in ["firefox", "chrome", "chromium", "brave"]:
-            btn = Gtk.Button(label=f"Import from {browser.capitalize()}")
-            btn.connect("clicked", lambda b, br=browser: self._import_browser(br))
-            fallback_box.append(btn)
-
-        sep = Gtk.Separator()
-        fallback_box.append(sep)
-
-        btn_file = Gtk.Button(label="Load Netscape cookies.txt file...")
+        # Step 3: Manual cookie file
+        group_file = Adw.PreferencesGroup(title="3. Alternative / Manual Import")
+        btn_file = Gtk.Button(label="Load Netscape cookies.txt...")
         btn_file.connect("clicked", self._open_file_dialog)
-        fallback_box.append(btn_file)
+        group_file.add(btn_file)
+        box.append(group_file)
 
-        view_stack.add_titled(fallback_box, "fallback", "Browser Import")
+        # Status Label
+        self.lbl_status = Gtk.Label()
+        self.lbl_status.set_wrap(True)
+        box.append(self.lbl_status)
 
-        switcher = Adw.ViewSwitcher(stack=view_stack, policy=Adw.ViewSwitcherPolicy.WIDE)
-        header.set_title_widget(switcher)
-        content.append(view_stack)
-
+        scrolled.set_child(box)
+        content.append(scrolled)
         self.set_content(content)
 
-    def _import_browser(self, browser: str):
-        ok = self.source.import_browser_cookies(browser)
-        if ok and self.on_auth_changed:
-            self.on_auth_changed(True)
-            self.close()
+    def _on_open_browser(self, btn):
+        import subprocess
+        subprocess.Popen(["xdg-open", "https://music.youtube.com"])
+
+    def _import_browser(self, browser_spec: str):
+        self.lbl_status.set_text("Importing session...")
+        def worker():
+            ok = self.source.import_browser_cookies(browser_spec)
+            GLib.idle_add(self._on_import_done, ok)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_import_done(self, success: bool):
+        if success:
+            self.lbl_status.set_text("Session imported successfully!")
+            if self.on_auth_changed:
+                self.on_auth_changed(True)
+            GLib.timeout_add(1000, self.close)
+        else:
+            self.lbl_status.set_text("Import failed. Make sure you are logged into YouTube Music in your browser, or close the browser to unlock the cookie database.")
 
     def _open_file_dialog(self, btn):
         dialog = Gtk.FileDialog()
