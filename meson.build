@@ -39,6 +39,9 @@ install_data('data/org.projectbluefin.Banshee.metainfo.xml', install_dir: get_op
 install_data('data/icons/hicolor/scalable/apps/org.projectbluefin.Banshee.svg',
   install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps'
 )
+install_data('data/icons/hicolor/128x128/apps/org.projectbluefin.Banshee.png',
+  install_dir: get_option('datadir') / 'icons/hicolor/128x128/apps'
+)
 
 # Run tests
 test('unit-tests', python, args: ['-m', 'unittest', 'discover', '-s', meson.project_source_root() / 'tests', '-p', 'test_*.py'])

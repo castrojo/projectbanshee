@@ -3,6 +3,8 @@ runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
 command: banshee
+# Workaround for host nested bwrap collision with live /run/user/1000/.flatpak during glycin icon decoding
+appstream-compose: false
 finish-args:
   - --share=network
   - --share=ipc
