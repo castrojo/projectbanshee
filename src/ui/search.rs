@@ -635,7 +635,9 @@ impl SearchPage {
             let busy = self.ctl.busy_guard();
             let query = q.clone();
             glib::spawn_future_local(async move {
+                let started = std::time::Instant::now();
                 let r = run(src.search(query.clone(), filter)).await;
+                log::debug!("search {source} “{query}”: {:?}", started.elapsed());
                 drop(busy);
                 let Some(p) = weak.upgrade() else { return };
                 p.pending.set(p.pending.get().saturating_sub(1));

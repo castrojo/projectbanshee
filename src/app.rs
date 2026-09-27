@@ -232,6 +232,22 @@ impl Controller {
                 .configure(p.discord_presence, p.discord_client_id.clone());
         }
         this.start_gc();
+        // Build the YouTube Music client (visitor token, TLS) now, so the first search is a
+        // single round trip even when Home comes from cache or uses the signed-in client.
+        {
+            let yt = this.youtube.clone();
+            glib::spawn_future_local(async move {
+                let t = Instant::now();
+                match run(yt.prewarm())
+                    .await
+                    .map_err(SourceError::Unavailable)
+                    .and_then(|r| r)
+                {
+                    Ok(()) => log::debug!("YouTube Music client ready in {:?}", t.elapsed()),
+                    Err(e) => log::info!("YouTube Music prewarm failed (search will retry): {e}"),
+                }
+            });
+        }
         Ok(this)
     }
 
