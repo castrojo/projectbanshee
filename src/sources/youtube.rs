@@ -121,8 +121,9 @@ struct Inner {
     auth: RwLock<AuthSlot>,
     signed_in: AtomicBool,
     ytdlp: OsString,
-    /// At most one automatic session re-import per run.
-    refresh_tried: AtomicBool,
+    /// When the last automatic session re-import was attempted (rate limit, not a latch:
+    /// browsers rotate cookies every few hours during an all-day session).
+    last_refresh: std::sync::Mutex<Option<std::time::Instant>>,
     /// yt-dlp reported that the imported cookies were rotated away.
     cookies_rotated: AtomicBool,
 }
@@ -146,7 +147,7 @@ impl YouTubeMusicSource {
                 anon: OnceCell::new(),
                 auth: RwLock::new(AuthSlot::Unloaded),
                 signed_in: AtomicBool::new(cookies::has_jar()),
-                refresh_tried: AtomicBool::new(false),
+                last_refresh: std::sync::Mutex::new(None),
                 cookies_rotated: AtomicBool::new(false),
                 ytdlp: cookies::ytdlp_program(),
             }),
@@ -183,8 +184,16 @@ impl YouTubeMusicSource {
             inner: self.inner.clone(),
         };
         async move {
-            if this.inner.refresh_tried.swap(true, Ordering::SeqCst) {
-                return Ok(false);
+            {
+                let mut last = this
+                    .inner
+                    .last_refresh
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                if last.is_some_and(|t| t.elapsed() < REFRESH_INTERVAL) {
+                    return Ok(false);
+                }
+                *last = Some(std::time::Instant::now());
             }
             let spec = cookies::last_browser_spec().or_else(|| {
                 let found = cookies::detect_browsers();
@@ -196,6 +205,13 @@ impl YouTubeMusicSource {
             this.reload_auth().await
         }
         .boxed()
+    }
+
+    /// Resolve without the imported cookies: the retry after a stream was refused, in case
+    /// the signed-in client's URL is what the server rejected.
+    pub fn resolve_anonymous(&self, track: Track) -> BoxFuture<'static, SourceResult<Resolved>> {
+        let inner = self.inner.clone();
+        async move { inner.resolve_with(track, false).await }.boxed()
     }
 
     /// Delete the jar and drop the authenticated client.
@@ -620,6 +636,10 @@ impl Inner {
     }
 
     async fn resolve(&self, track: Track) -> SourceResult<Resolved> {
+        self.resolve_with(track, true).await
+    }
+
+    async fn resolve_with(&self, track: Track, use_cookies: bool) -> SourceResult<Resolved> {
         if track.source != SourceKind::YouTubeMusic {
             return Err(SourceError::Unavailable("not a YouTube item".to_string()));
         }
@@ -628,7 +648,7 @@ impl Inner {
         }
         let video = track.kind == MediaKind::Video;
         // yt-dlp rewrites its --cookies file on exit: hand it a private per-call copy.
-        let jar = if self.signed_in.load(Ordering::SeqCst) {
+        let jar = if use_cookies && self.signed_in.load(Ordering::SeqCst) {
             match cookies::read_jar().map(|text| PrivateTemp::file(text.as_bytes())) {
                 Some(Ok(temp)) => Some(temp),
                 Some(Err(e)) => {
@@ -945,6 +965,9 @@ where
     out.retain(|c| seen.insert(c.id.clone()));
     Ok(out)
 }
+
+/// Minimum time between automatic session re-imports.
+const REFRESH_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 const SESSION_EXPIRED: &str =
     "your YouTube Music session has expired; import it again from Accounts";
