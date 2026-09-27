@@ -17,6 +17,8 @@ impl NowPlaying {
     pub fn new(ctl: &Rc<Controller>) -> Rc<Self> {
         let info = TrackInfo::new(ctl, 56, true, false);
         info.root.set_width_request(220);
+        // Keep the track text clear of the centred transport.
+        info.root.set_margin_end(18);
 
         let transport = Transport::new(ctl, 44);
         let progress = Progress::new(ctl, true);
@@ -52,6 +54,7 @@ impl NowPlaying {
         mini_btn.update_property(&[gtk::accessible::Property::Label("Mini Mode")]);
         let end = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         end.set_halign(gtk::Align::End);
+        end.set_margin_start(18);
         end.append(&extras.root);
         end.append(&mini_btn);
         end.append(&menu_btn);

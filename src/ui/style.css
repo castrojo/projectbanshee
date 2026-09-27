@@ -249,3 +249,7 @@
 .mini-quick-add .up-next-list row:hover {
   background-color: alpha(white, 0.1);
 }
+
+.queue-list .item-row.played {
+  opacity: 0.55;
+}

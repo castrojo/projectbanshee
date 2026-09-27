@@ -63,6 +63,13 @@ impl QueuePanel {
                 let index = li.position() as usize;
                 let current = ctl.current_entry().is_some_and(|c| c.id == entry.id);
                 row.bind(&ctl, RowItem::Queue { entry, index }, current);
+                // Entries before the current one have played: dim them.
+                let played = ctl.current_index().is_some_and(|c| index < c);
+                if played {
+                    row.add_css_class("played");
+                } else {
+                    row.remove_css_class("played");
+                }
             });
         }
         {
@@ -93,19 +100,22 @@ impl QueuePanel {
             move || {
                 let n = ctl.queue_len();
                 stack.set_visible_child_name(if n == 0 { "empty" } else { "list" });
-                let total: u64 = ctl
-                    .queue_tracks()
+                // What's still to come matters more than the whole list.
+                let start = ctl.current_index().map_or(0, |c| c + 1);
+                let upcoming: Vec<_> = ctl.queue_tracks().into_iter().skip(start).collect();
+                let left: u64 = upcoming
                     .iter()
                     .filter_map(|t| t.duration_secs)
                     .map(u64::from)
                     .sum();
-                let sub = match n {
+                let sub = match upcoming.len() {
+                    0 if n > 0 => "Nothing up next".to_string(),
                     0 => String::new(),
-                    1 => "1 item".into(),
-                    n => format!("{n} items"),
+                    1 => "1 up next".into(),
+                    k => format!("{k} up next"),
                 };
-                let sub = if total > 0 {
-                    format!("{sub} · {}", banshee::model::format_total(total))
+                let sub = if left > 0 {
+                    format!("{sub} · {} left", banshee::model::format_total(left))
                 } else {
                     sub
                 };
@@ -121,7 +131,8 @@ impl QueuePanel {
             ctl.subscribe(move |ev| match ev {
                 AppEvent::QueueChanged => refresh(),
                 AppEvent::NowPlaying(_) => {
-                    // Rebind rows so the now-playing marker moves.
+                    // Rebind rows so the now-playing marker and played dimming move.
+                    refresh();
                     if let Some(c) = weak_ctl.upgrade() {
                         store.items_changed(0, store.n_items(), store.n_items());
                         // Keep the playing entry in view.
