@@ -88,6 +88,11 @@ Banshee uses calendar-style versions `YY.MM.patch`, in the same format as freede
 
 The Flatpak manifest has no version field. To release: set `version` in `Cargo.toml`, add a matching `<release>` entry at the top of the metainfo, then run `build-aux/release-flatpak.sh`, which refuses to build if the two disagree. See [docs/research/calendar-versioning.md](docs/research/calendar-versioning.md).
 
+## Inspiration
+
+![pic](https://github.com/user-attachments/assets/857a1c11-e9aa-4c1a-bc1b-85c7a82fa6ad)
+
+
 ## Licensing and attribution
 
 Application source is licensed under GPL-3.0-or-later; see [`LICENSE`](LICENSE). The original Banshee icon is under MIT; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
