@@ -11,6 +11,8 @@ pub struct NowPlaying {
     pub root: gtk::CenterBox,
     /// Widgets hidden when the window is narrow.
     pub compact_widgets: Vec<gtk::Widget>,
+    /// Widgets whose fixed width only applies when the window is wide.
+    pub wide_widths: Vec<gtk::Widget>,
 }
 
 impl NowPlaying {
@@ -70,6 +72,7 @@ impl NowPlaying {
         Rc::new(Self {
             root,
             compact_widgets: vec![extras.root.clone().upcast()],
+            wide_widths: vec![info.root.clone().upcast(), progress.root.clone().upcast()],
         })
     }
 }

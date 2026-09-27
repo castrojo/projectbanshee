@@ -238,7 +238,10 @@ pub fn card(ctl: &Rc<Controller>, item: &SearchItem, open: &OpenCollection) -> g
         add.add_css_class("circular");
         add.add_css_class("osd");
         add.add_css_class("card-add");
-        add.update_property(&[gtk::accessible::Property::Label("Add to queue")]);
+        add.update_property(&[gtk::accessible::Property::Label(match item {
+            SearchItem::Track(_) => "Add to Queue",
+            SearchItem::Collection(_) => "Add All to Queue",
+        })]);
         {
             let (ctl, item) = (ctl.clone(), item.clone());
             add.connect_clicked(move |_| match &item {

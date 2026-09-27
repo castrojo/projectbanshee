@@ -157,13 +157,12 @@ fn install_app_actions(app: &adw::Application) {
             let d = adw::ShortcutsDialog::new();
             let queue = adw::ShortcutsSection::new(Some("Queueing"));
             for (t, k) in [
-                ("Search", "<Control>f"),
+                ("Search", "<Control>f <Control>l <Alt>1"),
                 ("Add highlighted result to queue", "Return"),
                 ("Play highlighted result next", "<Shift>Return"),
                 ("Play highlighted result now", "<Control>Return"),
                 ("Move highlight", "Up Down"),
                 ("Show or hide the queue", "F9"),
-                ("Library", "<Alt>2"),
             ] {
                 queue.add(adw::ShortcutsItem::new(t, k));
             }
@@ -178,8 +177,18 @@ fn install_app_actions(app: &adw::Application) {
                 play.add(adw::ShortcutsItem::new(t, k));
             }
             d.add(play);
+            let mini = adw::ShortcutsSection::new(Some("Mini Mode"));
+            for (t, k) in [
+                ("Search and add to queue", "<Control>f"),
+                ("Close search", "Escape"),
+                ("Play or pause", "space"),
+            ] {
+                mini.add(adw::ShortcutsItem::new(t, k));
+            }
+            d.add(mini);
             let general = adw::ShortcutsSection::new(Some("General"));
             for (t, k) in [
+                ("Library", "<Alt>2"),
                 ("Accounts", "<Control>comma"),
                 ("Keyboard shortcuts", "<Control>question"),
                 ("Close window", "<Control>w"),

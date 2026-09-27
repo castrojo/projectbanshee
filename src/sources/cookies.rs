@@ -218,7 +218,8 @@ pub async fn import_from_browser(spec: &str) -> SourceResult<()> {
         PrivateTemp::dir().map_err(|e| local_error("prepare a private temporary folder", &e))?;
     let export = dir.path().join("export.txt");
     let mut cmd = tokio::process::Command::new(ytdlp_program());
-    cmd.arg("--cookies-from-browser")
+    cmd.arg("--ignore-config")
+        .arg("--cookies-from-browser")
         .arg(spec)
         .arg("--cookies")
         .arg(&export)

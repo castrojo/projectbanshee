@@ -162,6 +162,9 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         Some(&None::<gtk::Widget>.to_value()),
     );
     bp.add_setter(&switcher_bar, "reveal", Some(&true.to_value()));
+    for w in &now.wide_widths {
+        bp.add_setter(w, "width-request", Some(&(-1i32).to_value()));
+    }
     // Shuffle/repeat/volume visibility has one owner: (narrow, mini) -> visible.
     let narrow = Rc::new(Cell::new(false));
     let mini_on = Rc::new(Cell::new(false));

@@ -95,10 +95,10 @@ pub fn present(ctl: &Rc<Controller>, parent: &impl IsA<gtk::Widget>) {
     // ---------------- Discord
     let dc = adw::PreferencesGroup::builder()
         .title("Discord")
-        .description("Show the song, artist and artwork you're playing as your Discord status.")
+        .description("Show the song, artist and artwork you’re playing as your Discord status.")
         .build();
     let dc_on = adw::SwitchRow::builder()
-        .title("Show What I'm Playing")
+        .title("Show What I’m Playing")
         .active(ctl.prefs.borrow().discord_presence)
         .build();
     let dc_id = adw::EntryRow::builder()

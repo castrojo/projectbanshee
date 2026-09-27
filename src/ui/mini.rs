@@ -125,6 +125,14 @@ impl MiniPlayer {
             }
         });
         this.root.add_controller(keys);
+        // GtkSearchEntry binds Escape to stop-search, so it never reaches the controller above
+        // while the entry has focus; close the quick-add from the signal instead.
+        let weak = Rc::downgrade(&this);
+        this.quick_add.entry.connect_stop_search(move |_| {
+            if let Some(m) = weak.upgrade() {
+                m.add_toggle.set_active(false);
+            }
+        });
         // Scroll over the capsule to change the volume.
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
         let c = ctl.clone();

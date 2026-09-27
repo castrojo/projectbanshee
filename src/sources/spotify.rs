@@ -125,9 +125,13 @@ impl SpotifySource {
     pub fn sign_out(&self) {
         let inner = &self.inner;
         inner.generation.fetch_add(1, Ordering::SeqCst);
-        *lock(&inner.token) = None;
+        {
+            // Delete under the token lock so a concurrent save can't re-create the file.
+            let mut token = lock(&inner.token);
+            *token = None;
+            auth::delete(&inner.token_path);
+        }
         *lock(&inner.premium) = None;
-        auth::delete(&inner.token_path);
         if let Some(session) = lock(&inner.session).take() {
             session.shutdown();
         }
@@ -309,7 +313,7 @@ impl Inner {
             old.shutdown();
         }
         *lock(&self.premium) = None;
-        let mut token = StoredToken::from_oauth(&oauth, None, None);
+        let token = StoredToken::from_oauth(&oauth, None, None);
         if token.refresh_token.is_empty() {
             return Err(SourceError::AuthRequired(
                 "Spotify did not return a refresh token; try again".to_string(),
@@ -330,12 +334,16 @@ impl Inner {
         if self.generation.load(Ordering::SeqCst) != generation {
             return Err(SourceError::AuthRequired(SIGNED_OUT_MEANWHILE.to_string()));
         }
-        // A refresh may have happened during `/me`; persist the newest token.
-        if let Some(current) = lock(&self.token).as_mut() {
+        // A refresh may have happened during `/me`; persist the newest token. Save under the
+        // token lock so a sign-out in between can't leave the file behind.
+        {
+            let mut guard = lock(&self.token);
+            let Some(current) = guard.as_mut() else {
+                return Err(SourceError::AuthRequired(SIGNED_OUT_MEANWHILE.to_string()));
+            };
             current.display_name = Some(name.clone());
-            token = current.clone();
+            auth::save(&self.token_path, current)?;
         }
-        auth::save(&self.token_path, &token)?;
         log::info!("signed in to Spotify as {name}");
         Ok(name)
     }
@@ -407,7 +415,11 @@ impl Inner {
                     let mut guard = lock(&self.token);
                     match guard.as_ref() {
                         Some(t) if t.refresh_token == current.refresh_token => {
-                            *guard = Some(refreshed.clone())
+                            *guard = Some(refreshed.clone());
+                            // Saved under the lock: sign-out deletes the file under it too.
+                            if let Err(e) = auth::save(&self.token_path, &refreshed) {
+                                log::warn!("{e}");
+                            }
                         }
                         _ => {
                             return Err(SourceError::AuthRequired(
@@ -415,9 +427,6 @@ impl Inner {
                             ));
                         }
                     }
-                }
-                if let Err(e) = auth::save(&self.token_path, &refreshed) {
-                    log::warn!("{e}");
                 }
                 log::debug!("refreshed the Spotify access token");
                 Ok(refreshed.access_token)
@@ -734,7 +743,7 @@ impl Inner {
         let market = [("market", "from_token")];
         let unplayable = || {
             SourceError::Unavailable(
-                "This Spotify item can't be played in your country".to_string(),
+                "This Spotify item can’t be played in your country".to_string(),
             )
         };
         match kind {

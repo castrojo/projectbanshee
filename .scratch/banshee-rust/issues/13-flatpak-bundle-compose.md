@@ -13,3 +13,5 @@
 ## Comments
 
 - 2026-09-27: Worked around and shipped 0.2.0. `appstream-compose: false` skips the failing compose; `org.flatpak.Builder` then fails exporting with "not a valid icon: Format not recognized" (its image loaders can't sandbox, for SVG and PNG alike), so the finished `build/` is exported with the host `flatpak build-export` and bundled. Installed with `flatpak install --user --reinstall` and smoke-tested (MPRIS Identity "Banshee", OpenUri → Playing via the bundled yt-dlp). Remaining: find why glycin can't sandbox inside Builder so compose (AppStream catalog data) can be re-enabled.
+
+- 2026-09-27: Retested for 25.09.1. Still fails the same way, now also when running `appstreamcli compose` on the finished tree via `flatpak run org.gnome.Sdk//50`: glycin's `flatpak-spawn --sandbox` is rejected with `Key file does not have group "Application"`. Tracked in `.scratch/release-25.09.1/issues/17-appstream-compose-disabled.md`.

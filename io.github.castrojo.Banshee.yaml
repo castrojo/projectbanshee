@@ -1,4 +1,4 @@
-app-id: io.github.castrojo.Banshee
+id: io.github.castrojo.Banshee
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
@@ -18,7 +18,6 @@ finish-args:
   - --socket=pulseaudio
   - --device=dri
   - --own-name=org.mpris.MediaPlayer2.banshee
-  - --talk-name=org.freedesktop.secrets
   # Discord Rich Presence: the Discord Flatpak's IPC socket.
   - --filesystem=xdg-run/app/com.discordapp.Discord
   # Restrict imports to Flatpak browser profile stores, not entire browser sandboxes.

@@ -156,6 +156,8 @@ mod imp {
         pub playing: RefCell<Option<gtk::Image>>,
         pub item: RefCell<Option<RowItem>>,
         pub mode: Cell<Option<RowMode>>,
+        /// Row menu actions; track-only ones are disabled while a Collection is bound.
+        pub actions: RefCell<Option<gio::SimpleActionGroup>>,
     }
 
     #[glib::object_subclass]
@@ -324,6 +326,7 @@ impl ItemRow {
             }),
         );
         row.insert_action_group("row", Some(&group));
+        row.imp().actions.replace(Some(group));
 
         let model = gio::Menu::new();
         match mode {
@@ -415,6 +418,17 @@ impl ItemRow {
 
     pub fn bind(&self, ctl: &Rc<Controller>, item: RowItem, is_current: bool) {
         let imp = self.imp();
+        if let Some(group) = imp.actions.borrow().as_ref() {
+            let is_track = !matches!(item, RowItem::Result(SearchItem::Collection(_)));
+            for name in ["play-now", "play-next", "open-artist"] {
+                if let Some(a) = group
+                    .lookup_action(name)
+                    .and_downcast::<gio::SimpleAction>()
+                {
+                    a.set_enabled(is_track);
+                }
+            }
+        }
         let album = match &item {
             RowItem::Result(SearchItem::Track(t))
             | RowItem::Queue {

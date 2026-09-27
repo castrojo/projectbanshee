@@ -629,6 +629,7 @@ impl Inner {
     async fn ytdlp_metadata(&self, id: String, kind: MediaKind) -> SourceResult<Track> {
         let mut cmd = tokio::process::Command::new(&self.ytdlp);
         cmd.args([
+            "--ignore-config",
             "-J",
             "--skip-download",
             "--ignore-no-formats-error",
@@ -680,8 +681,14 @@ impl Inner {
             None
         };
         let mut cmd = tokio::process::Command::new(&self.ytdlp);
-        cmd.args(["-J", "--no-playlist", "--no-progress", "-f"])
-            .arg(if video { VIDEO_FORMAT } else { AUDIO_FORMAT });
+        cmd.args([
+            "--ignore-config",
+            "-J",
+            "--no-playlist",
+            "--no-progress",
+            "-f",
+        ])
+        .arg(if video { VIDEO_FORMAT } else { AUDIO_FORMAT });
         if video {
             cmd.args(["--extractor-args", VIDEO_EXTRACTOR_ARGS]);
         }
