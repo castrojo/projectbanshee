@@ -69,19 +69,10 @@ build-aux/sdk-run.sh cargo test
 Flatpak bundle (regenerate `build-aux/cargo-sources.json` with [flatpak-cargo-generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo) after changing dependencies):
 
 ```sh
-flatpak-builder --user --install-deps-from=flathub --force-clean \
-  --repo=repo build io.github.castrojo.Banshee.yaml \
-  && flatpak build-bundle repo io.github.castrojo.Banshee.flatpak io.github.castrojo.Banshee
+build-aux/release-flatpak.sh
 ```
 
-If the export step fails with `… is not a valid icon: Format not recognized` (the image loaders inside `org.flatpak.Builder` can't start their sandbox on some systems), the build itself has finished in `build/`; export it with the host tools instead:
-
-```sh
-flatpak build-export repo build
-flatpak build-bundle repo io.github.castrojo.Banshee.flatpak io.github.castrojo.Banshee
-```
-
-The manifest sets `appstream-compose: false` for the same reason; validate the metadata separately with `appstreamcli validate data/io.github.castrojo.Banshee.metainfo.xml`.
+It builds with `org.flatpak.Builder`, exports the finished tree with the host `flatpak build-export` (the builder's image loaders can't start their sandbox on some systems, which breaks appstream compose and icon validation), writes `io.github.castrojo.Banshee.flatpak` and installs it for the current user. The manifest sets `appstream-compose: false` for the same reason; validate the metadata with `appstreamcli validate data/io.github.castrojo.Banshee.metainfo.xml`.
 
 Live tests against YouTube Music and Spotify are `#[ignore]`d: `build-aux/sdk-run.sh cargo test --test youtube_live -- --ignored --nocapture`.
 
