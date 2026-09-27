@@ -19,6 +19,8 @@
       <li>Your YouTube Music and Spotify playlists, artists, albums, liked songs and podcasts</li>
       <li>Queue, position and searches survive quitting</li>
       <li>MPRIS media controls, Mini Mode and your current song as your Discord status</li>
+      <li>A fullscreen Touch Mode for tablets and 2-in-1s</li>
+      <li>Suggestions to keep going when the queue runs out, never played without a tap</li>
     </ul>
     <p>This is an independent project, not affiliated with the original Banshee media player.</p>
   </description>
@@ -33,6 +35,14 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="25.09.2" date="2026-09-27">
+      <description>
+        <p>Touch Mode is a fullscreen layout for tablets and 2-in-1s: a large cover you can swipe to skip, big controls, and a queue built for fingers. Tap a row to play it, drag its grip to reorder, swipe it away to remove it with Undo. Add opens the search as a sheet. Portrait and split-screen windows stack the queue under the player. Press F11 or choose Touch Mode from the menu.</p>
+        <p>When nothing is up next, Keep Going suggests songs to add: YouTube Music's up-next for your last track, then your Quick picks. Nothing plays by itself. Once the queue has run out, anything you add starts playing.</p>
+        <p>Editing the queue no longer throws the list back to the top, and the now-playing marker and played dimming follow every track change. Undo notifications stay up for five seconds.</p>
+        <p>Banshee is now licensed under the Apache License 2.0. Versions up to and including 25.09.1 remain available under GPL-3.0-or-later. The Banshee icon keeps its MIT license.</p>
+      </description>
+    </release>
     <release version="25.09.1" date="2026-09-27">
       <description>
         <p>Banshee now uses calendar versions (year, month, patch), following the freedesktop SDK.</p>

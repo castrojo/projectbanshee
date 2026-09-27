@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "banshee"
-version = "25.9.1"
+version = "25.9.2"
 dependencies = [
  "async-channel",
  "env_logger",
