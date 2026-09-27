@@ -9,6 +9,8 @@ use gtk::{gio, glib};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+const SHELF_ITEMS: usize = 20;
+
 pub struct LibraryView {
     pub nav: adw::NavigationView,
     ctl: Rc<Controller>,
@@ -183,60 +185,129 @@ impl LibraryView {
                 sections,
                 refreshing,
             } => {
+                // Sections as artwork shelves, like Home; long ones end in "See All".
+                let weak = Rc::downgrade(self);
+                let open: crate::ui::home::OpenCollection = Rc::new(move |c| {
+                    if let Some(v) = weak.upgrade() {
+                        v.open(c);
+                    }
+                });
                 for (i, section) in sections.iter().enumerate() {
                     if section.collections.is_empty() {
                         continue;
                     }
-                    let g = adw::PreferencesGroup::builder()
-                        .title(format!("{name} · {}", section.title))
-                        .description(format!("{}", section.collections.len()))
-                        .build();
-                    if i == 0 && refreshing {
-                        g.set_header_suffix(Some(
-                            &adw::Spinner::builder().tooltip_text("Refreshing").build(),
-                        ));
-                    }
-                    for c in &section.collections {
-                        g.add(&self.collection_row(c));
-                    }
-                    container.append(&g);
+                    let items: Vec<SearchItem> = section
+                        .collections
+                        .iter()
+                        .take(SHELF_ITEMS)
+                        .cloned()
+                        .map(SearchItem::Collection)
+                        .collect();
+                    let extra: Option<gtk::Widget> = if section.collections.len() > SHELF_ITEMS {
+                        let all = gtk::Button::builder()
+                            .label(format!("See All {}", section.collections.len()))
+                            .valign(gtk::Align::Center)
+                            .build();
+                        all.add_css_class("flat");
+                        let (weak, section) = (Rc::downgrade(self), section.clone());
+                        all.connect_clicked(move |_| {
+                            if let Some(v) = weak.upgrade() {
+                                v.open_all(&section);
+                            }
+                        });
+                        Some(all.upcast())
+                    } else if i == 0 && refreshing {
+                        Some(
+                            adw::Spinner::builder()
+                                .tooltip_text("Refreshing")
+                                .build()
+                                .upcast(),
+                        )
+                    } else {
+                        None
+                    };
+                    container.append(&crate::ui::home::shelf(
+                        &self.ctl,
+                        &section.title,
+                        Some(name),
+                        &items,
+                        &open,
+                        extra.as_ref(),
+                    ));
                 }
             }
         }
     }
 
-    fn collection_row(self: &Rc<Self>, c: &Collection) -> adw::ActionRow {
-        let row = adw::ActionRow::builder()
-            .title(glib::markup_escape_text(&c.title))
-            .subtitle(glib::markup_escape_text(&c.subtitle))
-            .activatable(true)
-            .build();
-        let art = Artwork::new(40);
-        art.set_icon(c.kind.icon_name());
-        art.set_round(c.kind == CollectionKind::Artist);
-        art.load(&self.ctl, c.thumbnail_url.as_deref());
-        row.add_prefix(&art.root);
-        let add = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
-            .tooltip_text("Add All to Queue")
-            .valign(gtk::Align::Center)
-            .build();
-        add.add_css_class("flat");
-        add.update_property(&[gtk::accessible::Property::Label("Add all to queue")]);
-        {
-            let (ctl, c) = (self.ctl.clone(), c.clone());
-            add.connect_clicked(move |_| ctl.enqueue_collection(c.clone()));
+    /// Every collection of a section as a virtualised list (157 albums don't fit a shelf).
+    fn open_all(self: &Rc<Self>, section: &banshee::model::LibrarySection) {
+        let store = gtk::gio::ListStore::new::<glib::BoxedAnyObject>();
+        for c in &section.collections {
+            store.append(&glib::BoxedAnyObject::new(SearchItem::Collection(
+                c.clone(),
+            )));
         }
-        row.add_suffix(&add);
-        row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
-        let weak = Rc::downgrade(self);
-        let c = c.clone();
-        row.connect_activated(move |_| {
-            if let Some(v) = weak.upgrade() {
-                v.open(c.clone());
-            }
-        });
-        row
+        let factory = gtk::SignalListItemFactory::new();
+        {
+            let ctl = self.ctl.clone();
+            factory.connect_setup(move |_, item| {
+                if let Some(li) = item.downcast_ref::<gtk::ListItem>() {
+                    li.set_child(Some(&ItemRow::new(&ctl, RowMode::Result)));
+                }
+            });
+        }
+        {
+            let ctl = self.ctl.clone();
+            factory.connect_bind(move |_, item| {
+                let Some(li) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
+                let (Some(row), Some(obj)) = (
+                    li.child().and_downcast::<ItemRow>(),
+                    li.item().and_downcast::<glib::BoxedAnyObject>(),
+                ) else {
+                    return;
+                };
+                row.bind(
+                    &ctl,
+                    RowItem::Result(obj.borrow::<SearchItem>().clone()),
+                    false,
+                );
+            });
+        }
+        let list = gtk::ListView::builder()
+            .model(&gtk::NoSelection::new(Some(store.clone())))
+            .factory(&factory)
+            .build();
+        list.add_css_class("rich-list");
+        list.add_css_class("results");
+        {
+            let (weak, store) = (Rc::downgrade(self), store.clone());
+            list.connect_activate(move |_, pos| {
+                let (Some(v), Some(obj)) = (
+                    weak.upgrade(),
+                    store.item(pos).and_downcast::<glib::BoxedAnyObject>(),
+                ) else {
+                    return;
+                };
+                if let SearchItem::Collection(c) = obj.borrow::<SearchItem>().clone() {
+                    v.open(c);
+                }
+            });
+        }
+        let clamp = adw::ClampScrollable::builder()
+            .maximum_size(820)
+            .child(&list)
+            .build();
+        let scroller = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .child(&clamp)
+            .build();
+        let page = adw::NavigationPage::builder()
+            .title(&section.title)
+            .child(&scroller)
+            .build();
+        self.nav.push(&page);
     }
 
     /// Push a Collection page (also used by search results).

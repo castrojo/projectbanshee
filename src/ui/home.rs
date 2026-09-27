@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 const CARD_PX: i32 = 148;
 
-type OpenCollection = Rc<dyn Fn(Collection)>;
+pub type OpenCollection = Rc<dyn Fn(Collection)>;
 
 pub struct HomeView {
     pub root: gtk::Box,
@@ -112,20 +112,44 @@ impl HomeView {
         while let Some(c) = self.shelves.first_child() {
             self.shelves.remove(&c);
         }
-        for shelf in shelves {
-            self.shelves.append(&self.shelf(shelf));
+        let weak = Rc::downgrade(self);
+        let open: OpenCollection = Rc::new(move |c| {
+            if let Some(f) = weak
+                .upgrade()
+                .and_then(|h| h.open_collection.borrow().clone())
+            {
+                f(c);
+            }
+        });
+        for s in shelves {
+            self.shelves.append(&shelf(
+                &self.ctl,
+                &s.title,
+                s.strapline.as_deref(),
+                &s.items,
+                &open,
+                None,
+            ));
         }
     }
+}
 
-    fn shelf(self: &Rc<Self>, shelf: &HomeShelf) -> gtk::Box {
-        let title = gtk::Label::builder()
-            .label(&shelf.title)
-            .xalign(0.0)
-            .build();
+/// A titled, horizontally scrolling row of cards (Home shelves, Library sections).
+/// `extra` goes at the end of the header (e.g. a "See All" button).
+pub fn shelf(
+    ctl: &Rc<Controller>,
+    title_text: &str,
+    strapline: Option<&str>,
+    items: &[SearchItem],
+    open: &OpenCollection,
+    extra: Option<&gtk::Widget>,
+) -> gtk::Box {
+    {
+        let title = gtk::Label::builder().label(title_text).xalign(0.0).build();
         title.add_css_class("title-3");
         let heading = gtk::Box::new(gtk::Orientation::Vertical, 2);
         heading.set_hexpand(true);
-        if let Some(s) = shelf.strapline.as_ref().filter(|s| !s.is_empty()) {
+        if let Some(s) = strapline.filter(|s| !s.is_empty()) {
             let l = gtk::Label::builder().label(s).xalign(0.0).build();
             l.add_css_class("caption");
             l.add_css_class("dim-label");
@@ -134,8 +158,8 @@ impl HomeView {
         heading.append(&title);
 
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
-        for item in &shelf.items {
-            row.append(&self.card(item));
+        for item in items {
+            row.append(&card(ctl, item, open));
         }
         let scroller = gtk::ScrolledWindow::builder()
             .vscrollbar_policy(gtk::PolicyType::Never)
@@ -161,6 +185,9 @@ impl HomeView {
         header.set_margin_start(12);
         header.set_margin_end(12);
         header.append(&heading);
+        if let Some(w) = extra {
+            header.append(w);
+        }
         header.append(&back);
         header.append(&fwd);
 
@@ -171,8 +198,11 @@ impl HomeView {
         wrap.append(&scroller);
         wrap
     }
+}
 
-    fn card(self: &Rc<Self>, item: &SearchItem) -> gtk::Widget {
+/// An artwork card: tap queues a song or opens a collection; `+` queues either.
+pub fn card(ctl: &Rc<Controller>, item: &SearchItem, open: &OpenCollection) -> gtk::Widget {
+    {
         let (title, subtitle, thumb, icon, round) = match item {
             SearchItem::Track(t) => (
                 t.title.clone(),
@@ -192,7 +222,7 @@ impl HomeView {
         let art = Artwork::new(CARD_PX);
         art.set_icon(icon);
         art.set_round(round);
-        art.load(&self.ctl, thumb.as_deref());
+        art.load(ctl, thumb.as_deref());
 
         let add = gtk::Button::builder()
             .icon_name("list-add-symbolic")
@@ -210,7 +240,7 @@ impl HomeView {
         add.add_css_class("card-add");
         add.update_property(&[gtk::accessible::Property::Label("Add to queue")]);
         {
-            let (ctl, item) = (self.ctl.clone(), item.clone());
+            let (ctl, item) = (ctl.clone(), item.clone());
             add.connect_clicked(move |_| match &item {
                 SearchItem::Track(t) => ctl.enqueue(t.clone()),
                 SearchItem::Collection(c) => ctl.enqueue_collection(c.clone()),
@@ -251,18 +281,11 @@ impl HomeView {
             "{title}, {subtitle}"
         ))]);
         {
-            let (ctl, item, weak) = (self.ctl.clone(), item.clone(), Rc::downgrade(self));
+            let (ctl, item, open) = (ctl.clone(), item.clone(), open.clone());
             button.connect_clicked(move |_| match &item {
                 // Queueing is the default action.
                 SearchItem::Track(t) => ctl.enqueue(t.clone()),
-                SearchItem::Collection(c) => {
-                    if let Some(f) = weak
-                        .upgrade()
-                        .and_then(|h| h.open_collection.borrow().clone())
-                    {
-                        f(c.clone());
-                    }
-                }
+                SearchItem::Collection(c) => open(c.clone()),
             });
         }
         // `+` is a sibling over the card (not a button inside a button), so it is its own
