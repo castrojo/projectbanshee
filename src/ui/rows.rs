@@ -248,6 +248,7 @@ impl ItemRow {
             .build();
         menu.add_css_class("flat");
         menu.add_css_class("circular");
+        // Mini's quick-add keeps text room: its menu is right-click / long-press only.
         menu.set_visible(mode != RowMode::QuickAdd);
         row.append(&menu);
 
@@ -344,6 +345,40 @@ impl ItemRow {
         links.append(Some("Copy Link"), Some("row.copy-link"));
         model.append_section(None, &links);
         menu.set_menu_model(Some(&model));
+        // Context menu (secondary click or long press) on every row.
+        let popover = gtk::PopoverMenu::from_model(Some(&model));
+        popover.set_parent(&row);
+        popover.set_has_arrow(false);
+        popover.set_halign(gtk::Align::Start);
+        let open_at = {
+            let popover = popover.clone();
+            move |x: f64, y: f64| {
+                popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                popover.popup();
+            }
+        };
+        let click = gtk::GestureClick::builder()
+            .button(gdk::BUTTON_SECONDARY)
+            .build();
+        {
+            let open_at = open_at.clone();
+            click.connect_pressed(move |g, _, x, y| {
+                g.set_state(gtk::EventSequenceState::Claimed);
+                open_at(x, y);
+            });
+        }
+        row.add_controller(click);
+        let press = gtk::GestureLongPress::new();
+        {
+            let open_at = open_at.clone();
+            press.connect_pressed(move |_, x, y| open_at(x, y));
+        }
+        row.add_controller(press);
+        {
+            // Unparent the popover with the row so it doesn't leak.
+            let popover = popover.clone();
+            row.connect_destroy(move |_| popover.unparent());
+        }
 
         {
             let (weak_row, ctl) = (row.downgrade(), ctl.clone());
