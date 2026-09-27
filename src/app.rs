@@ -374,25 +374,19 @@ impl Controller {
         // their widgets), so lists keep their scroll position and in-flight gestures.
         let entries: Vec<QueueEntry> = self.queue.borrow().entries().to_vec();
         let store = &self.queue_store;
-        let old_len = store.n_items() as usize;
-        let same = |pos: usize, e: &QueueEntry| {
-            store
-                .item(pos as u32)
-                .and_downcast::<glib::BoxedAnyObject>()
-                .is_some_and(|o| *o.borrow::<QueueEntry>() == *e)
-        };
-        let common = old_len.min(entries.len());
-        let prefix = (0..common).take_while(|&i| same(i, &entries[i])).count();
-        let suffix = (0..common - prefix)
-            .take_while(|&k| same(old_len - 1 - k, &entries[entries.len() - 1 - k]))
-            .count();
-        let changed: Vec<glib::BoxedAnyObject> = entries[prefix..entries.len() - suffix]
-            .iter()
-            .map(|e| glib::BoxedAnyObject::new(e.clone()))
-            .collect();
-        let removed = old_len - prefix - suffix;
-        if removed > 0 || !changed.is_empty() {
-            store.splice(prefix as u32, removed as u32, &changed);
+        let (at, removed, added) =
+            banshee::queue::splice_range_by(store.n_items() as usize, entries.len(), |i, j| {
+                store
+                    .item(i as u32)
+                    .and_downcast::<glib::BoxedAnyObject>()
+                    .is_some_and(|o| *o.borrow::<QueueEntry>() == entries[j])
+            });
+        if removed > 0 || added > 0 {
+            let items: Vec<glib::BoxedAnyObject> = entries[at..at + added]
+                .iter()
+                .map(|e| glib::BoxedAnyObject::new(e.clone()))
+                .collect();
+            store.splice(at as u32, removed as u32, &items);
         }
         self.emit(AppEvent::QueueChanged);
         self.schedule_save();

@@ -232,6 +232,8 @@ enum Drag {
     Reorder {
         id: EntryId,
         y: f64,
+        /// Where the entry was when the drag began, for cancelling.
+        origin: usize,
     },
     Swipe {
         row: SwipeRow,
@@ -367,7 +369,12 @@ impl TouchMode {
         stacked.add_setter(&content, "homogeneous", Some(&false.to_value()));
         stacked.add_setter(&queue, "vexpand", Some(&true.to_value()));
         stacked.add_setter(&queue, "margin-start", Some(&24.to_value()));
-        stacked.add_setter(&stage_clamp, "margin-top", Some(&76.to_value()));
+        stacked.add_setter(&stage_clamp, "margin-top", Some(&56.to_value()));
+        stacked.add_setter(
+            &stage_clamp,
+            "css-classes",
+            Some(&["touch-stage", "compact"][..].to_value()),
+        );
         stacked.add_setter(&stage_clamp, "margin-bottom", Some(&0.to_value()));
         stacked.add_setter(&stage, "spacing", Some(&12.to_value()));
         stacked.add_setter(
@@ -377,6 +384,7 @@ impl TouchMode {
         );
         for label in info.labels() {
             stacked.add_setter(&label, "xalign", Some(&0.0f32.to_value()));
+            stacked.add_setter(&label, "lines", Some(&1.to_value()));
             stacked.add_setter(
                 &label,
                 "justify",
@@ -542,11 +550,22 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
+    // When the user last scrolled the list themselves; our own scrolls don't count.
+    let browsed: Rc<Cell<Option<Instant>>> = Rc::default();
+    let ours = Rc::new(Cell::new(false));
+    {
+        let (browsed, ours) = (browsed.clone(), ours.clone());
+        scroller.vadjustment().connect_value_changed(move |_| {
+            if !ours.get() {
+                browsed.set(Some(Instant::now()));
+            }
+        });
+    }
     {
         // Removing the row under the finger (it holds the list's focus) sends the list back
         // to the top. Note the position before this list reacts to a removal (connected ahead
         // of its model) and put it back once the list has laid out.
-        let weak = scroller.downgrade();
+        let (weak, ours) = (scroller.downgrade(), ours.clone());
         store.connect_items_changed(move |_, _, removed, added| {
             let Some(scroller) = weak.upgrade() else {
                 return;
@@ -557,9 +576,10 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
             let adj = scroller.vadjustment();
             let value = adj.value();
             let frames = Cell::new(0);
+            let ours = ours.clone();
             scroller.add_tick_callback(move |_, _| {
                 let max = (adj.upper() - adj.page_size()).max(adj.lower());
-                adj.set_value(value.min(max));
+                scroll_to_value(&adj, &ours, value.min(max));
                 frames.set(frames.get() + 1);
                 if frames.get() < 2 {
                     glib::ControlFlow::Continue
@@ -629,10 +649,10 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
     {
         // Open on what's playing, not on the played entries above it (after the first layout,
         // or the list ignores it).
-        let (ctl, scroller) = (ctl.clone(), scroller.clone());
+        let (ctl, scroller, ours) = (ctl.clone(), scroller.clone(), ours.clone());
         list.connect_map(move |_| {
-            let (ctl, scroller) = (ctl.clone(), scroller.clone());
-            glib::idle_add_local_once(move || show_current(&ctl, &scroller));
+            let (ctl, scroller, ours) = (ctl.clone(), scroller.clone(), ours.clone());
+            glib::idle_add_local_once(move || show_current(&ctl, &scroller, &ours));
         });
     }
     scroller.set_child(Some(&list));
@@ -678,11 +698,15 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
             AppEvent::NowPlaying(_) => {
                 refresh();
                 // Move the current marker and played dimming, then follow what's playing,
-                // unless a finger is reordering.
+                // unless a finger is reordering or the user is browsing the list (a track
+                // ending must not move the rows they're reaching for).
                 restyle();
-                if dragging.get().is_none() {
+                let browsing = browsed
+                    .get()
+                    .is_some_and(|t| t.elapsed() < Duration::from_secs(10));
+                if dragging.get().is_none() && !browsing {
                     if let Some(c) = weak.upgrade() {
-                        show_current(&c, &scroller);
+                        show_current(&c, &scroller, &ours);
                     }
                 }
             }
@@ -693,7 +717,7 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
 }
 
 /// Put the playing entry at the top of the list, with what's up next below it.
-fn show_current(ctl: &Controller, scroller: &gtk::ScrolledWindow) {
+fn show_current(ctl: &Controller, scroller: &gtk::ScrolledWindow, ours: &Cell<bool>) {
     let (Some(i), n) = (ctl.current_index(), ctl.queue_len()) else {
         return;
     };
@@ -705,7 +729,14 @@ fn show_current(ctl: &Controller, scroller: &gtk::ScrolledWindow) {
     // previous entry visible for context.
     let row = adj.upper() / n as f64;
     let max = adj.upper() - adj.page_size();
-    adj.set_value(((i as f64 - 0.25) * row).clamp(0.0, max));
+    scroll_to_value(&adj, ours, ((i as f64 - 0.25) * row).clamp(0.0, max));
+}
+
+/// Scroll without it counting as the user browsing.
+fn scroll_to_value(adj: &gtk::Adjustment, ours: &Cell<bool>, value: f64) {
+    ours.set(true);
+    adj.set_value(value);
+    ours.set(false);
 }
 
 /// One gesture on the list: grip → live reorder (with edge auto-scroll), sideways → swipe to
@@ -753,7 +784,8 @@ fn attach_queue_gestures(
     let gesture = gtk::GestureDrag::new();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
     {
-        let (list, state, start, dragging, reorder_to, scroller) = (
+        let (ctl, list, state, start, dragging, reorder_to, scroller) = (
+            ctl.clone(),
             list.clone(),
             state.clone(),
             start.clone(),
@@ -774,8 +806,15 @@ fn attach_queue_gestures(
                 *state.borrow_mut() = Drag::Pending { row, id: entry.id };
                 return;
             }
+            let Some(origin) = ctl.entry_index(entry.id) else {
+                return;
+            };
             g.set_state(gtk::EventSequenceState::Claimed);
-            *state.borrow_mut() = Drag::Reorder { id: entry.id, y };
+            *state.borrow_mut() = Drag::Reorder {
+                id: entry.id,
+                y,
+                origin,
+            };
             dragging.set(Some(entry.id));
             row.add_css_class("lifted");
             // Auto-scroll while the finger rests near an edge.
@@ -879,14 +918,22 @@ fn attach_queue_gestures(
     }
     {
         // A cancelled drag (Escape, a grab, the sequence claimed elsewhere) never commits:
-        // a swipe springs back, a reorder stays where the entry already is. `cancel` comes
-        // before `drag-end`, which then finds nothing to do.
-        let (state, dragging, restyle) = (state.clone(), dragging.clone(), restyle.clone());
+        // a swipe springs back and a reorder puts the entry back where it started. `cancel`
+        // comes before `drag-end`, which then finds nothing to do.
+        let (ctl, state, dragging, restyle) = (
+            ctl.clone(),
+            state.clone(),
+            dragging.clone(),
+            restyle.clone(),
+        );
         gesture.connect_cancel(move |_, _| {
             let prev = std::mem::replace(&mut *state.borrow_mut(), Drag::Idle);
             match prev {
-                Drag::Reorder { .. } => {
+                Drag::Reorder { id, origin, .. } => {
                     dragging.set(None);
+                    if let Some(now) = ctl.entry_index(id).filter(|&now| now != origin) {
+                        ctl.move_entry(now, origin);
+                    }
                     restyle();
                 }
                 Drag::Swipe { row, velocity, .. } => spring_back(&row, velocity),

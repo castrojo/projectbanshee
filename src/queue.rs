@@ -330,3 +330,26 @@ impl Queue {
         }
     }
 }
+
+/// The smallest splice turning `old` into `new`: `(position, removed, added)`, keeping the
+/// common prefix and suffix. Lists showing the Queue apply this so unchanged rows keep their
+/// widgets and scroll position. Items compare in full, so an entry whose metadata changed
+/// counts as changed.
+pub fn splice_range<T: PartialEq>(old: &[T], new: &[T]) -> (usize, usize, usize) {
+    splice_range_by(old.len(), new.len(), |i, j| old[i] == new[j])
+}
+
+/// [`splice_range`] over lengths and an equality test on (old index, new index), for
+/// callers whose old items live elsewhere (a list store).
+pub fn splice_range_by(
+    old_len: usize,
+    new_len: usize,
+    same: impl Fn(usize, usize) -> bool,
+) -> (usize, usize, usize) {
+    let common = old_len.min(new_len);
+    let prefix = (0..common).take_while(|&i| same(i, i)).count();
+    let suffix = (0..common - prefix)
+        .take_while(|&k| same(old_len - 1 - k, new_len - 1 - k))
+        .count();
+    (prefix, old_len - prefix - suffix, new_len - prefix - suffix)
+}
