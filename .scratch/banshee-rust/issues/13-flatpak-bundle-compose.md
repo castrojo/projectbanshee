@@ -4,8 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-human
+**Status:** ready-for-agent
 
 - [ ] Run the build from a normal host terminal (or CI) and confirm compose passes
 - [ ] `flatpak build-bundle repo io.github.castrojo.Banshee.flatpak io.github.castrojo.Banshee` produces a 0.2.0 bundle
 - [ ] Installed bundle: search, queue, play, MPRIS verified inside the sandbox
+
+## Comments
+
+- 2026-09-27: Worked around and shipped 0.2.0. `appstream-compose: false` skips the failing compose; `org.flatpak.Builder` then fails exporting with "not a valid icon: Format not recognized" (its image loaders can't sandbox, for SVG and PNG alike), so the finished `build/` is exported with the host `flatpak build-export` and bundled. Installed with `flatpak install --user --reinstall` and smoke-tested (MPRIS Identity "Banshee", OpenUri → Playing via the bundled yt-dlp). Remaining: find why glycin can't sandbox inside Builder so compose (AppStream catalog data) can be re-enabled.

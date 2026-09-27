@@ -74,7 +74,14 @@ flatpak-builder --user --install-deps-from=flathub --force-clean \
   && flatpak build-bundle repo io.github.castrojo.Banshee.flatpak io.github.castrojo.Banshee
 ```
 
-Use the host `flatpak-builder` from a normal terminal. The Flatpak'd `org.flatpak.Builder` currently fails in `appstreamcli compose` because glycin cannot spawn its image-loader sandbox from inside it (see `.scratch/banshee-rust/issues/13-flatpak-bundle-compose.md`).
+If the export step fails with `… is not a valid icon: Format not recognized` (the image loaders inside `org.flatpak.Builder` can't start their sandbox on some systems), the build itself has finished in `build/`; export it with the host tools instead:
+
+```sh
+flatpak build-export repo build
+flatpak build-bundle repo io.github.castrojo.Banshee.flatpak io.github.castrojo.Banshee
+```
+
+The manifest sets `appstream-compose: false` for the same reason; validate the metadata separately with `appstreamcli validate data/io.github.castrojo.Banshee.metainfo.xml`.
 
 Live tests against YouTube Music and Spotify are `#[ignore]`d: `build-aux/sdk-run.sh cargo test --test youtube_live -- --ignored --nocapture`.
 

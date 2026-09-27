@@ -5,6 +5,9 @@ sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 command: banshee
+# glycin (used by appstreamcli compose for icons) cannot start its loader sandbox inside
+# org.flatpak.Builder here; the metainfo is validated separately with appstreamcli.
+appstream-compose: false
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 finish-args:
@@ -60,7 +63,10 @@ modules:
       - install -Dm755 target/release/banshee /app/bin/banshee
       - install -Dm644 data/io.github.castrojo.Banshee.desktop /app/share/applications/io.github.castrojo.Banshee.desktop
       - install -Dm644 data/io.github.castrojo.Banshee.metainfo.xml /app/share/metainfo/io.github.castrojo.Banshee.metainfo.xml
-      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.castrojo.Banshee.svg /app/share/icons/hicolor/scalable/apps/io.github.castrojo.Banshee.svg
+      # PNG renderings of the SVG: flatpak's export-time icon validator in org.flatpak.Builder
+      # can't load SVG here ("Format not recognized").
+      - install -Dm644 data/icons/hicolor/512x512/apps/io.github.castrojo.Banshee.png /app/share/icons/hicolor/512x512/apps/io.github.castrojo.Banshee.png
+      - install -Dm644 data/icons/hicolor/256x256/apps/io.github.castrojo.Banshee.png /app/share/icons/hicolor/256x256/apps/io.github.castrojo.Banshee.png
       - install -Dm644 data/icons/hicolor/128x128/apps/io.github.castrojo.Banshee.png /app/share/icons/hicolor/128x128/apps/io.github.castrojo.Banshee.png
     sources:
       - type: dir
