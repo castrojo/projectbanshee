@@ -1,5 +1,5 @@
 // Project Banshee — queue-first GNOME player.
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 mod app;
 mod ui;
@@ -134,7 +134,7 @@ fn install_app_actions(app: &adw::Application) {
                 .application_icon(APP_ID)
                 .version(env!("BANSHEE_VERSION"))
                 .developer_name("Jorge O. Castro")
-                .license_type(gtk::License::Gpl30)
+                .license_type(gtk::License::Apache20)
                 .website("https://github.com/castrojo/projectbanshee")
                 .issue_url("https://github.com/castrojo/projectbanshee/issues")
                 .comments("A queue-first player for YouTube Music, YouTube and Spotify, in the spirit of the classic Banshee. Not affiliated with the original project.")

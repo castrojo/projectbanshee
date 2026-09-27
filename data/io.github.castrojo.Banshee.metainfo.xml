@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.castrojo.Banshee</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-or-later</project_license>
+  <project_license>Apache-2.0</project_license>
   <name>Banshee</name>
   <summary>Build a queue of music, videos and podcasts as fast as you type</summary>
   <url type="homepage">https://github.com/castrojo/projectbanshee</url>

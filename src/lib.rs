@@ -1,5 +1,5 @@
 //! Project Banshee: queue-first GNOME player for YouTube Music, YouTube and Spotify.
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 pub mod artwork;
 pub mod cache;

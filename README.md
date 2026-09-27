@@ -93,4 +93,4 @@ The Flatpak manifest has no version field. To release: set `version` in `Cargo.t
 
 ## Licensing and attribution
 
-Application source is licensed under GPL-3.0-or-later; see [`LICENSE`](LICENSE). The original Banshee icon is under MIT; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Application source is licensed under the Apache License 2.0; see [`LICENSE`](LICENSE). Releases up to and including 25.09.1 were published under GPL-3.0-or-later. The original Banshee icon keeps its MIT license; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
