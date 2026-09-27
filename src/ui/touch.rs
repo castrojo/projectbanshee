@@ -555,6 +555,8 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
     let browsed: Rc<Cell<Option<Instant>>> = Rc::default();
     {
         let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+        // Capture: the scrolled window's own scroll handling would consume it first.
+        wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
         let browsed = browsed.clone();
         wheel.connect_scroll(move |_, _, _| {
             browsed.set(Some(Instant::now()));
@@ -897,11 +899,12 @@ fn attach_queue_gestures(
         // A cancelled drag (Escape, a grab, the sequence claimed elsewhere) never commits:
         // a swipe springs back and a reorder puts the entry back where it started. `cancel`
         // comes before `drag-end`, which then finds nothing to do.
-        let (ctl, state, dragging, restyle) = (
+        let (ctl, state, dragging, restyle, browsed) = (
             ctl.clone(),
             state.clone(),
             dragging.clone(),
             restyle.clone(),
+            browsed.clone(),
         );
         gesture.connect_cancel(move |_, _| {
             let prev = std::mem::replace(&mut *state.borrow_mut(), Drag::Idle);
@@ -914,7 +917,9 @@ fn attach_queue_gestures(
                     restyle();
                 }
                 Drag::Swipe { row, velocity, .. } => spring_back(&row, velocity),
-                Drag::Pending { .. } | Drag::Idle => {}
+                // The scrolled window claimed a pan before it read as sideways: browsing.
+                Drag::Pending { .. } => browsed.set(Some(Instant::now())),
+                Drag::Idle => {}
             }
         });
     }
