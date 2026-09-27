@@ -163,6 +163,7 @@ mod imp {
         pub mode: Cell<Option<RowMode>>,
         /// Row menu actions; track-only ones are disabled while a Collection is bound.
         pub actions: RefCell<Option<gio::SimpleActionGroup>>,
+        pub menu_button: RefCell<Option<gtk::MenuButton>>,
     }
 
     #[glib::object_subclass]
@@ -258,6 +259,7 @@ impl ItemRow {
         // Mini's quick-add keeps text room: its menu is right-click / long-press only.
         menu.set_visible(mode != RowMode::QuickAdd);
         row.append(&menu);
+        *imp.menu_button.borrow_mut() = Some(menu.clone());
 
         // Row-local actions used by the menu; they read whatever item is bound now.
         let group = gio::SimpleActionGroup::new();
@@ -292,9 +294,9 @@ impl ItemRow {
         add_action(
             "move-up",
             Rc::new(|c, i| {
-                if let RowItem::Queue { index, .. } = i {
-                    if *index > 0 {
-                        c.move_entry(*index, index - 1);
+                if let RowItem::Queue { entry, .. } = i {
+                    if let Some(index) = c.entry_index(entry.id).filter(|&i| i > 0) {
+                        c.move_entry(index, index - 1);
                     }
                 }
             }),
@@ -302,9 +304,11 @@ impl ItemRow {
         add_action(
             "move-down",
             Rc::new(|c, i| {
-                if let RowItem::Queue { index, .. } = i {
-                    if index + 1 < c.queue_len() {
-                        c.move_entry(*index, index + 1);
+                if let RowItem::Queue { entry, .. } = i {
+                    if let Some(index) = c.entry_index(entry.id) {
+                        if index + 1 < c.queue_len() {
+                            c.move_entry(index, index + 1);
+                        }
                     }
                 }
             }),
@@ -415,6 +419,13 @@ impl ItemRow {
     /// The row's `+` / remove button (so pages can add behaviour, e.g. remembering a query).
     pub fn primary_button(&self) -> Option<gtk::Button> {
         self.imp().primary.borrow().clone()
+    }
+
+    /// Drop the visible ⋮ (secondary click and long-press still open the same menu).
+    pub fn hide_menu_button(&self) {
+        if let Some(m) = self.imp().menu_button.borrow().as_ref() {
+            m.set_visible(false);
+        }
     }
 
     pub fn item(&self) -> Option<RowItem> {

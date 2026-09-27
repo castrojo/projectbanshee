@@ -5,6 +5,7 @@ use crate::ui::rows::{ItemRow, RowItem, RowMode};
 use adw::prelude::*;
 use banshee::queue::QueueEntry;
 use gtk::{gdk, gio, glib};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct QueuePanel {
@@ -37,18 +38,23 @@ impl QueuePanel {
         list.add_css_class("queue-list");
         list.update_property(&[gtk::accessible::Property::Label("Queue")]);
 
+        // Every row this list creates: the current marker and played dimming move on
+        // NowPlaying without a rebind (re-announcing the same items keeps their tiles).
+        let rows: Rc<RefCell<Vec<glib::WeakRef<ItemRow>>>> = Rc::default();
         {
-            let ctl_outer = ctl.clone();
-            let ctl = ctl_outer.clone();
+            let (ctl, rows) = (ctl.clone(), rows.clone());
             factory.connect_setup(move |_, item| {
                 let Some(li) = item.downcast_ref::<gtk::ListItem>() else {
                     return;
                 };
                 let row = ItemRow::new(&ctl, RowMode::Queue);
                 attach_dnd(&ctl, &row);
+                rows.borrow_mut().push(row.downgrade());
                 li.set_child(Some(&row));
             });
-            let ctl = ctl_outer.clone();
+        }
+        {
+            let ctl = ctl.clone();
             factory.connect_bind(move |_, item| {
                 let Some(li) = item.downcast_ref::<gtk::ListItem>() else {
                     return;
@@ -60,16 +66,7 @@ impl QueuePanel {
                     return;
                 };
                 let entry = obj.borrow::<QueueEntry>().clone();
-                let index = li.position() as usize;
-                let current = ctl.current_entry().is_some_and(|c| c.id == entry.id);
-                row.bind(&ctl, RowItem::Queue { entry, index }, current);
-                // Entries before the current one have played: dim them.
-                let played = ctl.current_index().is_some_and(|c| index < c);
-                if played {
-                    row.add_css_class("played");
-                } else {
-                    row.remove_css_class("played");
-                }
+                show_entry(&ctl, &row, entry, li.position() as usize);
             });
         }
         {
@@ -106,20 +103,24 @@ impl QueuePanel {
         refresh();
         {
             let refresh = refresh.clone();
-            let store = ctl.queue_store.clone();
             let weak_ctl = Rc::downgrade(ctl);
             let list = list.clone();
             ctl.subscribe(move |ev| match ev {
                 AppEvent::QueueChanged => refresh(),
                 AppEvent::NowPlaying(_) => {
-                    // Rebind rows so the now-playing marker and played dimming move.
                     refresh();
-                    if let Some(c) = weak_ctl.upgrade() {
-                        store.items_changed(0, store.n_items(), store.n_items());
-                        // Keep the playing entry in view.
-                        if let Some(i) = c.current_index() {
-                            list.scroll_to(i as u32, gtk::ListScrollFlags::NONE, None);
+                    let Some(c) = weak_ctl.upgrade() else { return };
+                    rows.borrow_mut().retain(|w| w.upgrade().is_some());
+                    for row in rows.borrow().iter().filter_map(glib::WeakRef::upgrade) {
+                        if let Some(RowItem::Queue { entry, .. }) = row.item() {
+                            if let Some(index) = c.entry_index(entry.id) {
+                                show_entry(&c, &row, entry, index);
+                            }
                         }
+                    }
+                    // Keep the playing entry in view.
+                    if let Some(i) = c.current_index() {
+                        list.scroll_to(i as u32, gtk::ListScrollFlags::NONE, None);
                     }
                 }
                 _ => {}
@@ -135,6 +136,18 @@ impl QueuePanel {
         window.add_action(&clear);
 
         Rc::new(Self { root, header })
+    }
+}
+
+/// Bind `row` to `entry` at `index` with the now-playing marker and played dimming.
+fn show_entry(ctl: &Rc<Controller>, row: &ItemRow, entry: QueueEntry, index: usize) {
+    let current = ctl.current_entry().is_some_and(|c| c.id == entry.id);
+    row.bind(ctl, RowItem::Queue { entry, index }, current);
+    // Entries before the current one have played: dim them.
+    if ctl.current_index().is_some_and(|c| index < c) {
+        row.add_css_class("played");
+    } else {
+        row.remove_css_class("played");
     }
 }
 
@@ -168,10 +181,11 @@ fn attach_dnd(ctl: &Rc<Controller>, row: &ItemRow) {
         .build();
     let weak_row = row.downgrade();
     drag.connect_prepare(move |_, _, _| {
+        // The entry id, not the bound index: rows outside a change aren't rebound.
         let row = weak_row.upgrade()?;
         match row.item()? {
-            RowItem::Queue { index, .. } => {
-                Some(gdk::ContentProvider::for_value(&(index as u32).to_value()))
+            RowItem::Queue { entry, .. } => {
+                Some(gdk::ContentProvider::for_value(&entry.id.to_value()))
             }
             RowItem::Result(_) => None,
         }
@@ -184,17 +198,22 @@ fn attach_dnd(ctl: &Rc<Controller>, row: &ItemRow) {
     });
     row.add_controller(drag);
 
-    let drop = gtk::DropTarget::new(u32::static_type(), gdk::DragAction::MOVE);
+    let drop = gtk::DropTarget::new(u64::static_type(), gdk::DragAction::MOVE);
     let (weak_row, ctl) = (row.downgrade(), ctl.clone());
     drop.connect_drop(move |_, value, _, _| {
-        let (Some(row), Ok(from)) = (weak_row.upgrade(), value.get::<u32>()) else {
+        let (Some(row), Ok(dragged)) = (weak_row.upgrade(), value.get::<u64>()) else {
             return false;
         };
-        let Some(RowItem::Queue { index: to, .. }) = row.item() else {
+        let Some(RowItem::Queue { entry: target, .. }) = row.item() else {
             return false;
         };
-        ctl.move_entry(from as usize, to);
-        true
+        match (ctl.entry_index(dragged), ctl.entry_index(target.id)) {
+            (Some(from), Some(to)) => {
+                ctl.move_entry(from, to);
+                true
+            }
+            _ => false,
+        }
     });
     row.add_controller(drop);
 }

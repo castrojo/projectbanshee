@@ -363,16 +363,37 @@ impl Controller {
             .collect()
     }
 
+    /// Where an entry sits in the Queue now (rows resolve this at action time: list items
+    /// outside a change aren't rebound, so a bound index can be stale).
+    pub fn entry_index(&self, id: EntryId) -> Option<usize> {
+        self.queue.borrow().index_of(id)
+    }
+
     fn queue_changed(&self) {
-        let objs: Vec<glib::BoxedAnyObject> = self
-            .queue
-            .borrow()
-            .entries()
+        // Splice only the part that changed: unchanged entries keep their list items (and
+        // their widgets), so lists keep their scroll position and in-flight gestures.
+        let entries: Vec<QueueEntry> = self.queue.borrow().entries().to_vec();
+        let store = &self.queue_store;
+        let old_len = store.n_items() as usize;
+        let same = |pos: usize, e: &QueueEntry| {
+            store
+                .item(pos as u32)
+                .and_downcast::<glib::BoxedAnyObject>()
+                .is_some_and(|o| *o.borrow::<QueueEntry>() == *e)
+        };
+        let common = old_len.min(entries.len());
+        let prefix = (0..common).take_while(|&i| same(i, &entries[i])).count();
+        let suffix = (0..common - prefix)
+            .take_while(|&k| same(old_len - 1 - k, &entries[entries.len() - 1 - k]))
+            .count();
+        let changed: Vec<glib::BoxedAnyObject> = entries[prefix..entries.len() - suffix]
             .iter()
             .map(|e| glib::BoxedAnyObject::new(e.clone()))
             .collect();
-        self.queue_store
-            .splice(0, self.queue_store.n_items(), &objs);
+        let removed = old_len - prefix - suffix;
+        if removed > 0 || !changed.is_empty() {
+            store.splice(prefix as u32, removed as u32, &changed);
+        }
         self.emit(AppEvent::QueueChanged);
         self.schedule_save();
         // Whatever now follows the playing entry gets its stream resolved ahead of time,

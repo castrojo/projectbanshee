@@ -256,7 +256,13 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             AppEvent::Toast(t) => {
                 let toast = adw::Toast::builder()
                     .title(glib::markup_escape_text(&t.title))
-                    .timeout(if t.priority_high { 6 } else { 3 })
+                    // Undo gets libadwaita's default 5 s: on touch a late tap would otherwise
+                    // land on the row under the expired toast.
+                    .timeout(match (t.priority_high, t.undo.is_some()) {
+                        (true, _) => 6,
+                        (false, true) => 5,
+                        (false, false) => 3,
+                    })
                     .build();
                 if t.priority_high {
                     toast.set_priority(adw::ToastPriority::High);

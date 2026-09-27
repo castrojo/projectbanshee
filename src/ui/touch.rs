@@ -113,6 +113,8 @@ impl SwipeRow {
         underlay.set_parent(&obj);
 
         let row = ItemRow::new(ctl, RowMode::Queue);
+        // Text room: long-press opens the same menu; − and swiping remove.
+        row.hide_menu_button();
         let grip = gtk::Image::from_icon_name("list-drag-handle-symbolic");
         grip.add_css_class("drag-handle");
         grip.set_tooltip_text(Some("Drag to Reorder"));
@@ -243,6 +245,8 @@ pub struct TouchMode {
     pub root: adw::ToastOverlay,
     sheet: adw::BottomSheet,
     search: Rc<SearchPage>,
+    /// The queue's reorder/swipe gesture, so Escape can cancel it.
+    queue_gesture: gtk::GestureDrag,
 }
 
 impl TouchMode {
@@ -279,7 +283,7 @@ impl TouchMode {
         attach_cover_swipe(ctl, &info.root);
 
         // ---- Queue.
-        let (queue, open_add) = build_queue(ctl);
+        let (queue, open_add, queue_gesture) = build_queue(ctl);
 
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         content.set_homogeneous(true);
@@ -323,8 +327,26 @@ impl TouchMode {
             .width_request(360)
             .height_request(294)
             .build();
-        // Portrait, or too narrow for two columns (split screen): the stage, with a smaller
-        // cover, above the queue.
+        let cover = |bp: &adw::Breakpoint, px: i32| {
+            for w in info.art.size_widgets() {
+                bp.add_setter(&w, "width-request", Some(&px.to_value()));
+                bp.add_setter(&w, "height-request", Some(&px.to_value()));
+            }
+        };
+        // Short landscape (2-in-1s at 125–150 %): a smaller cover, tighter stage.
+        let short = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
+            adw::BreakpointConditionLengthType::MaxHeight,
+            760.0,
+            adw::LengthUnit::Sp,
+        ));
+        cover(&short, 200);
+        short.add_setter(&stage, "spacing", Some(&12.to_value()));
+        short.add_setter(&stage_clamp, "margin-top", Some(&16.to_value()));
+        short.add_setter(&stage_clamp, "margin-bottom", Some(&16.to_value()));
+        bin.add_breakpoint(short);
+        // Portrait, or too narrow for two columns (split screen): a compact stage — cover
+        // beside the text, no extras — above the queue, which gets most of the screen.
+        // Added last so it wins when both match.
         let stacked = adw::Breakpoint::new(adw::BreakpointCondition::new_or(
             adw::BreakpointCondition::new_ratio(
                 adw::BreakpointConditionRatioType::MaxAspectRatio,
@@ -345,12 +367,24 @@ impl TouchMode {
         stacked.add_setter(&content, "homogeneous", Some(&false.to_value()));
         stacked.add_setter(&queue, "vexpand", Some(&true.to_value()));
         stacked.add_setter(&queue, "margin-start", Some(&24.to_value()));
-        stacked.add_setter(&stage_clamp, "margin-top", Some(&72.to_value()));
+        stacked.add_setter(&stage_clamp, "margin-top", Some(&76.to_value()));
         stacked.add_setter(&stage_clamp, "margin-bottom", Some(&0.to_value()));
-        for w in info.art.size_widgets() {
-            stacked.add_setter(&w, "width-request", Some(&180.to_value()));
-            stacked.add_setter(&w, "height-request", Some(&180.to_value()));
+        stacked.add_setter(&stage, "spacing", Some(&12.to_value()));
+        stacked.add_setter(
+            &info.root,
+            "orientation",
+            Some(&gtk::Orientation::Horizontal.to_value()),
+        );
+        for label in info.labels() {
+            stacked.add_setter(&label, "xalign", Some(&0.0f32.to_value()));
+            stacked.add_setter(
+                &label,
+                "justify",
+                Some(&gtk::Justification::Left.to_value()),
+            );
         }
+        stacked.add_setter(&extras.root, "visible", Some(&false.to_value()));
+        cover(&stacked, 112);
         bin.add_breakpoint(stacked);
 
         let root = adw::ToastOverlay::new();
@@ -361,6 +395,7 @@ impl TouchMode {
             root,
             sheet,
             search,
+            queue_gesture,
         });
 
         {
@@ -382,17 +417,10 @@ impl TouchMode {
             });
         }
         {
-            // GtkSearchEntry turns Escape into stop-search; it closes the sheet here.
-            let weak = Rc::downgrade(&this);
-            this.search.entry.connect_stop_search(move |_| {
-                if let Some(t) = weak.upgrade() {
-                    t.sheet.set_open(false);
-                }
-            });
-        }
-        {
-            // Escape leaves Touch Mode (the sheet handles its own Escape first).
+            // Escape, in order: cancel a drag in progress (HIG), close the search sheet
+            // (before its entry turns Escape into stop-search), leave Touch Mode.
             let keys = gtk::EventControllerKey::new();
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
             let weak = Rc::downgrade(&this);
             keys.connect_key_pressed(move |_, key, _, _| {
                 let Some(t) = weak.upgrade() else {
@@ -401,7 +429,9 @@ impl TouchMode {
                 if key != gtk::gdk::Key::Escape {
                     return glib::Propagation::Proceed;
                 }
-                if t.sheet.is_open() {
+                if t.queue_gesture.is_active() {
+                    t.queue_gesture.reset();
+                } else if t.sheet.is_open() {
                     t.sheet.set_open(false);
                 } else {
                     let _ = t.root.activate_action("win.touch-mode", None);
@@ -449,7 +479,7 @@ fn attach_cover_swipe(ctl: &Rc<Controller>, cover: &gtk::Box) {
 type OpenAdd = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
 
 /// The queue slab: header, touch list, empty state. Returns the slab and the Add hook.
-fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd) {
+fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
     let open_add: OpenAdd = Rc::default();
     let run_add = {
         let open_add = open_add.clone();
@@ -512,33 +542,28 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd) {
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
-    // Every queue change re-splices the whole store, which drops the list back to the top.
-    // Note the position before this list reacts (connected ahead of its model) and hold it
-    // for the next few frames, until the list has laid out the new items.
-    let restore: Rc<Cell<Option<f64>>> = Rc::default();
     {
-        let (weak, restore) = (scroller.downgrade(), restore.clone());
-        store.connect_items_changed(move |_, _, _, _| {
+        // Removing the row under the finger (it holds the list's focus) sends the list back
+        // to the top. Note the position before this list reacts to a removal (connected ahead
+        // of its model) and put it back once the list has laid out.
+        let weak = scroller.downgrade();
+        store.connect_items_changed(move |_, _, removed, added| {
             let Some(scroller) = weak.upgrade() else {
                 return;
             };
-            if !scroller.is_mapped() || restore.get().is_some() {
+            if removed == 0 || added > 0 || !scroller.is_mapped() {
                 return;
             }
             let adj = scroller.vadjustment();
-            restore.set(Some(adj.value()));
-            let (restore, frames) = (restore.clone(), Cell::new(0));
+            let value = adj.value();
+            let frames = Cell::new(0);
             scroller.add_tick_callback(move |_, _| {
-                let Some(value) = restore.get() else {
-                    return glib::ControlFlow::Break;
-                };
                 let max = (adj.upper() - adj.page_size()).max(adj.lower());
                 adj.set_value(value.min(max));
                 frames.set(frames.get() + 1);
-                if frames.get() < 3 {
+                if frames.get() < 2 {
                     glib::ControlFlow::Continue
                 } else {
-                    restore.set(None);
                     glib::ControlFlow::Break
                 }
             });
@@ -581,8 +606,11 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd) {
         Rc::new(move || {
             rows.borrow_mut().retain(|w| w.upgrade().is_some());
             for row in rows.borrow().iter().filter_map(glib::WeakRef::upgrade) {
-                if let Some(RowItem::Queue { entry, index }) = row.item_row().item() {
-                    row.show(&ctl, entry, index, dragging.get());
+                // Resolve the position now: rows outside a change keep their bound index.
+                if let Some(entry) = row.entry() {
+                    if let Some(index) = ctl.entry_index(entry.id) {
+                        row.show(&ctl, entry, index, dragging.get());
+                    }
                 }
             }
         })
@@ -601,18 +629,14 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd) {
     {
         // Open on what's playing, not on the played entries above it (after the first layout,
         // or the list ignores it).
-        let ctl = ctl.clone();
-        list.connect_map(move |l| {
-            let (ctl, l) = (ctl.clone(), l.clone());
-            glib::idle_add_local_once(move || {
-                if let Some(i) = ctl.current_index() {
-                    l.scroll_to(i as u32, gtk::ListScrollFlags::NONE, None);
-                }
-            });
+        let (ctl, scroller) = (ctl.clone(), scroller.clone());
+        list.connect_map(move |_| {
+            let (ctl, scroller) = (ctl.clone(), scroller.clone());
+            glib::idle_add_local_once(move || show_current(&ctl, &scroller));
         });
     }
     scroller.set_child(Some(&list));
-    attach_queue_gestures(ctl, &list, &scroller, &dragging, &restyle);
+    let gesture = attach_queue_gestures(ctl, &list, &scroller, &dragging, &restyle);
 
     let empty_add = add_button();
     empty_add.add_css_class("suggested-action");
@@ -648,30 +672,40 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd) {
     refresh();
     {
         let weak = Rc::downgrade(ctl);
-        let list = list.clone();
+        let scroller = scroller.clone();
         ctl.subscribe(move |ev| match ev {
             AppEvent::QueueChanged => refresh(),
             AppEvent::NowPlaying(_) => {
                 refresh();
-                // Move the current marker and played dimming.
+                // Move the current marker and played dimming, then follow what's playing,
+                // unless a finger is reordering.
                 restyle();
-                // Then show what's playing instead of holding the old position, unless a
-                // finger is reordering. Deferred: listeners after this one (the queue sidebar)
-                // re-announce the shared store, which would pin the old position again.
                 if dragging.get().is_none() {
-                    let (weak, list, restore) = (weak.clone(), list.clone(), restore.clone());
-                    glib::idle_add_local_once(move || {
-                        if let Some(i) = weak.upgrade().and_then(|c| c.current_index()) {
-                            restore.set(None);
-                            list.scroll_to(i as u32, gtk::ListScrollFlags::NONE, None);
-                        }
-                    });
+                    if let Some(c) = weak.upgrade() {
+                        show_current(&c, &scroller);
+                    }
                 }
             }
             _ => {}
         });
     }
-    (slab, open_add)
+    (slab, open_add, gesture)
+}
+
+/// Put the playing entry at the top of the list, with what's up next below it.
+fn show_current(ctl: &Controller, scroller: &gtk::ScrolledWindow) {
+    let (Some(i), n) = (ctl.current_index(), ctl.queue_len()) else {
+        return;
+    };
+    let adj = scroller.vadjustment();
+    if n == 0 || adj.upper() <= adj.page_size() {
+        return;
+    }
+    // Rows are one height, so the list's extent divides evenly; keep a sliver of the
+    // previous entry visible for context.
+    let row = adj.upper() / n as f64;
+    let max = adj.upper() - adj.page_size();
+    adj.set_value(((i as f64 - 0.25) * row).clamp(0.0, max));
 }
 
 /// One gesture on the list: grip → live reorder (with edge auto-scroll), sideways → swipe to
@@ -682,7 +716,7 @@ fn attach_queue_gestures(
     scroller: &gtk::ScrolledWindow,
     dragging: &Rc<Cell<Option<EntryId>>>,
     restyle: &Rc<dyn Fn()>,
-) {
+) -> gtk::GestureDrag {
     let state: Rc<RefCell<Drag>> = Rc::new(RefCell::new(Drag::Idle));
     let start: Rc<Cell<(f64, f64)>> = Rc::default();
     let store = ctl.queue_store.clone();
@@ -828,7 +862,9 @@ fn attach_queue_gestures(
             restyle.clone(),
         );
         gesture.connect_drag_end(move |_, _, _| {
-            match std::mem::replace(&mut *state.borrow_mut(), Drag::Idle) {
+            // End the borrow before the arms run: they re-enter list binds.
+            let prev = std::mem::replace(&mut *state.borrow_mut(), Drag::Idle);
+            match prev {
                 Drag::Reorder { .. } => {
                     dragging.set(None);
                     // Drop the lifted style wherever the entry landed.
@@ -841,40 +877,58 @@ fn attach_queue_gestures(
             }
         });
     }
-    list.add_controller(gesture);
+    {
+        // A cancelled drag (Escape, a grab, the sequence claimed elsewhere) never commits:
+        // a swipe springs back, a reorder stays where the entry already is. `cancel` comes
+        // before `drag-end`, which then finds nothing to do.
+        let (state, dragging, restyle) = (state.clone(), dragging.clone(), restyle.clone());
+        gesture.connect_cancel(move |_, _| {
+            let prev = std::mem::replace(&mut *state.borrow_mut(), Drag::Idle);
+            match prev {
+                Drag::Reorder { .. } => {
+                    dragging.set(None);
+                    restyle();
+                }
+                Drag::Swipe { row, velocity, .. } => spring_back(&row, velocity),
+                Drag::Pending { .. } | Drag::Idle => {}
+            }
+        });
+    }
+    list.add_controller(gesture.clone());
+    gesture
 }
 
 /// Slide the row out and remove its entry, or spring it back.
 fn finish_swipe(ctl: &Rc<Controller>, row: &SwipeRow, id: EntryId, velocity: f64) {
     let width = f64::from(row.width());
     let from = row.offset();
-    let target = {
-        let row = row.downgrade();
-        adw::CallbackAnimationTarget::new(move |v| {
-            if let Some(row) = row.upgrade() {
-                row.set_offset(v);
-            }
-        })
-    };
     match swipe_end(from, width, velocity) {
         SwipeEnd::Remove => {
             let to = width.copysign(if from == 0.0 { velocity } else { from });
-            let a = adw::TimedAnimation::new(row, from, to, 180, target);
+            let a = adw::TimedAnimation::new(row, from, to, 180, offset_target(row));
             a.set_easing(adw::Easing::EaseOutCubic);
             let ctl = ctl.clone();
             row.animate(a, Some(Box::new(move || ctl.remove_entry(id, true))));
         }
-        SwipeEnd::Restore => {
-            let a = adw::SpringAnimation::new(
-                row,
-                from,
-                0.0,
-                adw::SpringParams::new(0.9, 1.0, 500.0),
-                target,
-            );
-            a.set_initial_velocity(velocity);
-            a.set_clamp(false);
-            row.animate(a, None);
-        }
+        SwipeEnd::Restore => spring_back(row, velocity),
     }
+}
+
+/// Spring the row back to rest from wherever the finger left it.
+fn spring_back(row: &SwipeRow, velocity: f64) {
+    let params = adw::SpringParams::new(0.9, 1.0, 500.0);
+    let a = adw::SpringAnimation::new(row, row.offset(), 0.0, params, offset_target(row));
+    a.set_initial_velocity(velocity);
+    a.set_clamp(false);
+    row.animate(a, None);
+}
+
+/// Animates the row's offset without keeping the row alive (it owns the animation).
+fn offset_target(row: &SwipeRow) -> adw::CallbackAnimationTarget {
+    let row = row.downgrade();
+    adw::CallbackAnimationTarget::new(move |v| {
+        if let Some(row) = row.upgrade() {
+            row.set_offset(v);
+        }
+    })
 }

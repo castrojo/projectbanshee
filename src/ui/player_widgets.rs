@@ -62,6 +62,19 @@ impl TrackInfo {
             child = w.next_sibling();
         }
     }
+
+    /// The title, artist, album and "Up next" labels (for breakpoint setters).
+    pub fn labels(&self) -> Vec<gtk::Label> {
+        let mut out = Vec::new();
+        let mut child = self.text.first_child();
+        while let Some(w) = child {
+            if let Some(label) = w.downcast_ref::<gtk::Label>() {
+                out.push(label.clone());
+            }
+            child = w.next_sibling();
+        }
+        out
+    }
 }
 
 impl TrackInfo {
