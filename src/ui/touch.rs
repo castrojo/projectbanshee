@@ -550,22 +550,23 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
-    // When the user last scrolled the list themselves; our own scrolls don't count.
+    // When the user last scrolled the list with wheel, touchpad or finger. Only real input
+    // counts: the list also moves itself on relayout, and that isn't browsing.
     let browsed: Rc<Cell<Option<Instant>>> = Rc::default();
-    let ours = Rc::new(Cell::new(false));
     {
-        let (browsed, ours) = (browsed.clone(), ours.clone());
-        scroller.vadjustment().connect_value_changed(move |_| {
-            if !ours.get() {
-                browsed.set(Some(Instant::now()));
-            }
+        let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+        let browsed = browsed.clone();
+        wheel.connect_scroll(move |_, _, _| {
+            browsed.set(Some(Instant::now()));
+            glib::Propagation::Proceed
         });
+        scroller.add_controller(wheel);
     }
     {
         // Removing the row under the finger (it holds the list's focus) sends the list back
         // to the top. Note the position before this list reacts to a removal (connected ahead
         // of its model) and put it back once the list has laid out.
-        let (weak, ours) = (scroller.downgrade(), ours.clone());
+        let weak = scroller.downgrade();
         store.connect_items_changed(move |_, _, removed, added| {
             let Some(scroller) = weak.upgrade() else {
                 return;
@@ -576,10 +577,9 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
             let adj = scroller.vadjustment();
             let value = adj.value();
             let frames = Cell::new(0);
-            let ours = ours.clone();
             scroller.add_tick_callback(move |_, _| {
                 let max = (adj.upper() - adj.page_size()).max(adj.lower());
-                scroll_to_value(&adj, &ours, value.min(max));
+                adj.set_value(value.min(max));
                 frames.set(frames.get() + 1);
                 if frames.get() < 2 {
                     glib::ControlFlow::Continue
@@ -649,14 +649,14 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
     {
         // Open on what's playing, not on the played entries above it (after the first layout,
         // or the list ignores it).
-        let (ctl, scroller, ours) = (ctl.clone(), scroller.clone(), ours.clone());
+        let (ctl, scroller) = (ctl.clone(), scroller.clone());
         list.connect_map(move |_| {
-            let (ctl, scroller, ours) = (ctl.clone(), scroller.clone(), ours.clone());
-            glib::idle_add_local_once(move || show_current(&ctl, &scroller, &ours));
+            let (ctl, scroller) = (ctl.clone(), scroller.clone());
+            glib::idle_add_local_once(move || show_current(&ctl, &scroller));
         });
     }
     scroller.set_child(Some(&list));
-    let gesture = attach_queue_gestures(ctl, &list, &scroller, &dragging, &restyle);
+    let gesture = attach_queue_gestures(ctl, &list, &scroller, &dragging, &restyle, &browsed);
 
     let empty_add = add_button();
     empty_add.add_css_class("suggested-action");
@@ -706,7 +706,7 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
                     .is_some_and(|t| t.elapsed() < Duration::from_secs(10));
                 if dragging.get().is_none() && !browsing {
                     if let Some(c) = weak.upgrade() {
-                        show_current(&c, &scroller, &ours);
+                        show_current(&c, &scroller);
                     }
                 }
             }
@@ -717,7 +717,7 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
 }
 
 /// Put the playing entry at the top of the list, with what's up next below it.
-fn show_current(ctl: &Controller, scroller: &gtk::ScrolledWindow, ours: &Cell<bool>) {
+fn show_current(ctl: &Controller, scroller: &gtk::ScrolledWindow) {
     let (Some(i), n) = (ctl.current_index(), ctl.queue_len()) else {
         return;
     };
@@ -729,14 +729,7 @@ fn show_current(ctl: &Controller, scroller: &gtk::ScrolledWindow, ours: &Cell<bo
     // previous entry visible for context.
     let row = adj.upper() / n as f64;
     let max = adj.upper() - adj.page_size();
-    scroll_to_value(&adj, ours, ((i as f64 - 0.25) * row).clamp(0.0, max));
-}
-
-/// Scroll without it counting as the user browsing.
-fn scroll_to_value(adj: &gtk::Adjustment, ours: &Cell<bool>, value: f64) {
-    ours.set(true);
-    adj.set_value(value);
-    ours.set(false);
+    adj.set_value(((i as f64 - 0.25) * row).clamp(0.0, max));
 }
 
 /// One gesture on the list: grip → live reorder (with edge auto-scroll), sideways → swipe to
@@ -747,6 +740,7 @@ fn attach_queue_gestures(
     scroller: &gtk::ScrolledWindow,
     dragging: &Rc<Cell<Option<EntryId>>>,
     restyle: &Rc<dyn Fn()>,
+    browsed: &Rc<Cell<Option<Instant>>>,
 ) -> gtk::GestureDrag {
     let state: Rc<RefCell<Drag>> = Rc::new(RefCell::new(Drag::Idle));
     let start: Rc<Cell<(f64, f64)>> = Rc::default();
@@ -846,7 +840,12 @@ fn attach_queue_gestures(
         });
     }
     {
-        let (state, start, reorder_to) = (state.clone(), start.clone(), reorder_to.clone());
+        let (state, start, reorder_to, browsed) = (
+            state.clone(),
+            start.clone(),
+            reorder_to.clone(),
+            browsed.clone(),
+        );
         gesture.connect_drag_update(move |g, dx, dy| {
             let mut s = state.borrow_mut();
             match &mut *s {
@@ -868,6 +867,8 @@ fn attach_queue_gestures(
                         };
                     }
                     DragIntent::Scroll => {
+                        // A finger panning the list: browsing.
+                        browsed.set(Some(Instant::now()));
                         g.set_state(gtk::EventSequenceState::Denied);
                         *s = Drag::Idle;
                     }
