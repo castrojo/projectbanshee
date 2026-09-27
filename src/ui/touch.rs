@@ -562,33 +562,7 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
         });
         scroller.add_controller(wheel);
     }
-    {
-        // Removing the row under the finger (it holds the list's focus) sends the list back
-        // to the top. Note the position before this list reacts to a removal (connected ahead
-        // of its model) and put it back once the list has laid out.
-        let weak = scroller.downgrade();
-        store.connect_items_changed(move |_, _, removed, added| {
-            let Some(scroller) = weak.upgrade() else {
-                return;
-            };
-            if removed == 0 || added > 0 || !scroller.is_mapped() {
-                return;
-            }
-            let adj = scroller.vadjustment();
-            let value = adj.value();
-            let frames = Cell::new(0);
-            scroller.add_tick_callback(move |_, _| {
-                let max = (adj.upper() - adj.page_size()).max(adj.lower());
-                adj.set_value(value.min(max));
-                frames.set(frames.get() + 1);
-                if frames.get() < 2 {
-                    glib::ControlFlow::Continue
-                } else {
-                    glib::ControlFlow::Break
-                }
-            });
-        });
-    }
+    crate::ui::hold_scroll_on_removal(&store, &scroller);
     let selection = gtk::NoSelection::new(Some(store.clone()));
     let factory = gtk::SignalListItemFactory::new();
     // Every row this list creates, so the current marker and played dimming can move without

@@ -27,6 +27,11 @@ impl QueuePanel {
             .build();
         header.pack_end(&menu_btn);
 
+        let scroller = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vexpand(true)
+            .build();
+        crate::ui::hold_scroll_on_removal(&ctl.queue_store, &scroller);
         let selection = gtk::NoSelection::new(Some(ctl.queue_store.clone()));
         let factory = gtk::SignalListItemFactory::new();
         let list = gtk::ListView::builder()
@@ -74,11 +79,7 @@ impl QueuePanel {
             list.connect_activate(move |_, pos| ctl.play_index(pos as usize));
         }
 
-        let scroller = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vexpand(true)
-            .child(&list)
-            .build();
+        scroller.set_child(Some(&list));
         let empty = adw::StatusPage::builder()
             .icon_name("view-list-symbolic")
             .title("Queue Is Empty")
@@ -113,9 +114,10 @@ impl QueuePanel {
             let weak_ctl = Rc::downgrade(ctl);
             let list = list.clone();
             // Keep Going shows only while nothing is Up next (the current entry is the last
-            // one), and it shrinks the list: keep the end of the list in view once the list
-            // has laid out again (an entry appended or updated just now has no position
-            // before that, and splicing it moves the view).
+            // one), and it shrinks the list: show the end of the list when the section
+            // appears and when the track changes under it, after the list has laid out (an
+            // entry appended just now has no position before that). Queue edits don't move
+            // the list, so someone scrolled up to rearrange stays where they are.
             let keep_going_shown = Cell::new(false);
             let show_end = |list: &gtk::ListView| {
                 let frames = Cell::new(0);
@@ -131,12 +133,7 @@ impl QueuePanel {
                 });
             };
             ctl.subscribe(move |ev| match ev {
-                AppEvent::QueueChanged => {
-                    refresh();
-                    if keep_going_shown.get() {
-                        show_end(&list);
-                    }
-                }
+                AppEvent::QueueChanged => refresh(),
                 AppEvent::NowPlaying(_) => {
                     refresh();
                     let Some(c) = weak_ctl.upgrade() else { return };
@@ -149,15 +146,18 @@ impl QueuePanel {
                         }
                     }
                     // Keep the playing entry in view.
-                    if let Some(i) = c.current_index() {
+                    if keep_going_shown.get() {
+                        show_end(&list);
+                    } else if let Some(i) = c.current_index() {
                         list.scroll_to(i as u32, gtk::ListScrollFlags::NONE, None);
                     }
                 }
                 AppEvent::KeepGoing(tracks) => {
-                    keep_going_shown.set(!tracks.is_empty());
-                    if !tracks.is_empty() {
+                    let shown = !tracks.is_empty();
+                    if shown && !keep_going_shown.get() {
                         show_end(&list);
                     }
+                    keep_going_shown.set(shown);
                 }
                 _ => {}
             });

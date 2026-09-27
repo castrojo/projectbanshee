@@ -15,7 +15,7 @@ pub mod window;
 use crate::app::Controller;
 use adw::prelude::*;
 use banshee::model::{Collection, CollectionKind, SourceKind};
-use gtk::glib;
+use gtk::{gio, glib};
 use std::rc::Rc;
 
 /// Open a web link in the user's browser via the OpenURI portal.
@@ -79,6 +79,36 @@ thread_local! {
         }
         p
     };
+}
+
+/// Removing the row that holds a list's focus (the one just tapped or clicked) sends a
+/// GtkListView back to the top. Call this before creating the list's selection model over
+/// `store`, so it sees a removal first: it notes the position and puts it back once the list
+/// has laid out.
+pub fn hold_scroll_on_removal(store: &gio::ListStore, scroller: &gtk::ScrolledWindow) {
+    let weak = scroller.downgrade();
+    store.connect_items_changed(move |_, _, removed, added| {
+        let Some(scroller) = weak.upgrade() else {
+            return;
+        };
+        if removed == 0 || added > 0 || !scroller.is_mapped() {
+            return;
+        }
+        let adj = scroller.vadjustment();
+        let value = adj.value();
+        let frames = std::cell::Cell::new(0);
+        scroller.add_tick_callback(move |_, _| {
+            let max = (adj.upper() - adj.page_size()).max(adj.lower());
+            adj.set_value(value.min(max));
+            frames.set(frames.get() + 1);
+            // A few frames: the list's reset can land several frames after the removal.
+            if frames.get() < 8 {
+                glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
+            }
+        });
+    });
 }
 
 /// Tint the play button and Mini Mode with a colour taken from the current artwork.
