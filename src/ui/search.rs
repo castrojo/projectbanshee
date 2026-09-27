@@ -41,6 +41,9 @@ pub struct SearchPage {
     rendered_query: RefCell<String>,
     /// The user moved the highlight with Up/Down for the current query.
     user_moved: Cell<bool>,
+    /// Enter was pressed before any result existed for this generation: queue the top
+    /// result as soon as one arrives (`true` = play next).
+    pending_enter: Cell<Option<(u64, bool)>>,
     /// Records the query in Recent Searches once the user has settled on its results.
     settle: RefCell<Option<glib::SourceId>>,
     open_collection: RefCell<Option<OpenCollection>>,
@@ -310,6 +313,7 @@ impl SearchPage {
             debounce: RefCell::new(None),
             rendered_query: RefCell::new(String::new()),
             user_moved: Cell::new(false),
+            pending_enter: Cell::new(None),
             settle: RefCell::new(None),
             open_collection: RefCell::new(None),
         });
@@ -730,6 +734,21 @@ impl SearchPage {
             if pos == 0 {
                 self.list.scroll_to(0, gtk::ListScrollFlags::NONE, None);
             }
+            // Enter was pressed while nothing had arrived yet: queue the best match now.
+            if let Some((g, play_next)) = self.pending_enter.get() {
+                if g == self.generation.get() {
+                    self.pending_enter.set(None);
+                    if let Some(item) = self.selected_item() {
+                        self.ctl.remember_query(&q);
+                        match item {
+                            SearchItem::Track(t) if play_next => self.ctl.play_next(t),
+                            SearchItem::Track(t) => self.ctl.enqueue(t),
+                            SearchItem::Collection(c) => self.ctl.enqueue_collection(c),
+                        }
+                        self.entry.select_region(0, -1);
+                    }
+                }
+            }
         }
         let errors = self.errors.borrow();
         if !errors.is_empty() {
@@ -785,7 +804,7 @@ impl SearchPage {
 
     /// Enter: queue the highlighted result, then select the entry text so the next
     /// keystroke starts the next search.
-    fn queue_selected(&self, play_next: bool) {
+    fn queue_selected(self: &Rc<Self>, play_next: bool) {
         // A pasted YouTube / YouTube Music / Spotify link is queued as is.
         let q = self.query();
         if is_link(&q) {
@@ -793,9 +812,20 @@ impl SearchPage {
             self.entry.select_region(0, -1);
             return;
         }
+        // A fast typist can press Enter before the list caught up with the last keystroke:
+        // rank for the current text now, so Enter never takes a row from the previous query.
+        if *self.rendered_query.borrow() != q {
+            self.on_query_changed();
+        }
         let Some(item) = self.selected_item() else {
+            // Nothing yet (the network is still answering): take the first result that lands.
+            if !q.is_empty() {
+                self.pending_enter
+                    .set(Some((self.generation.get(), play_next)));
+            }
             return;
         };
+        self.pending_enter.set(None);
         log::debug!(
             "Enter on “{}” queues {:?} (row {} of {})",
             self.query(),
