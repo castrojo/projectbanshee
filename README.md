@@ -1,6 +1,14 @@
 # Project Banshee
 
-Project Banshee builds **Banshee**, a queue-first GNOME player in the spirit of the classic Banshee. **Queueing is the default action, not playing.** Type, press Enter (or `+`), keep typing: one queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order. It is written in Rust with GTK 4, libadwaita and GStreamer. It does not play local files or radio, and it is not affiliated with the original Banshee project.
+<img width="128" height="128" alt="io github castrojo Banshee" src="https://github.com/user-attachments/assets/cbe6be02-dc8a-40d9-a529-3394a2a69daf" />
+
+Project Banshee builds **Banshee**, a queue-first GNOME player in the spirit of the classic Banshee. **Queueing is the default action, not playing.** Type, press Enter (or `+`), keep typing: one queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order. It is written in Rust with GTK 4, libadwaita and GStreamer. It does not play local files or radio. Other than sharing a community manager it is not affiliated with the original Banshee project. Aaron or Gabriel, if you read this, ping me! 😄
+
+This only works with online services, use [Amberol](https://flathub.org/en/apps/io.bassi.Amberol) if you want local music.
+
+<img width="765" height="321" alt="Screenshot From 2026-09-27 00-25-09" src="https://github.com/user-attachments/assets/191146fd-5bf6-4198-82a6-9337cc0f87d0" />
+
+
 
 ## Install
 
@@ -13,25 +21,13 @@ flatpak run io.github.castrojo.Banshee
 
 The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 
-## Use
-
-- **Home** is the empty Search page: your recent searches as chips, then YouTube Music's shelves (Quick picks, mixes, albums, podcasts). Tap a song to queue it, tap a playlist or album to open it, or use `+` on any card.
-- **Search** is focused when the window opens. Results appear as you type: matches from everything you have seen before show at once, and YouTube Music (and Spotify, if signed in) results merge in a moment later, ranked by fuzzy match. A spinner beside the entry shows when results are still coming.
-- **Enter** adds the highlighted result to the queue and selects the text, so the next word you type starts the next search. **Shift+Enter** plays it next, **Ctrl+Enter** plays it now, **Up/Down** move the highlight. Every row also has `+`.
-- **Filters**: All, Music, Videos, Podcasts.
-- **Links**: paste a YouTube, YouTube Music or Spotify link into Search and press Enter to queue it.
-- **Queue** is the sidebar (F9 toggles it). Drag rows to reorder, use `−` to remove (with Undo), activate a row to play it. Shuffle and repeat are in the Now Playing Bar.
-- **Keep Going**: when nothing is up next, the queue shows up to eight songs to add: what YouTube Music would play after the last song, then your Quick picks, never anything already queued. Nothing plays by itself; tap a song (or its `+`) to add it. If playback has already reached the end of the queue, the song you add starts playing. Mini Mode's quick-add and Touch Mode show the same suggestions.
-- **Library** shows your YouTube Music and Spotify playlists, liked songs, albums, artists and podcasts. Open one to browse it or use `+` to queue all of it. Library data is cached and refreshed in the background.
-- **Now Playing Bar**: click the artwork to open the artist on YouTube Music. Videos also show in the Video tab.
-- **Mini Mode** (Ctrl+M or the button in the Now Playing Bar) turns the window into a capsule lit by the cover art: track, Up next, transport and a seek line. Press `+` or Ctrl+F in it to search and queue without leaving Mini Mode (it also shows recent searches and Up Next); Escape closes the search. Space plays or pauses and scrolling over the capsule changes the volume.
-- **Touch Mode** (F11 or **Menu → Touch Mode**) is a fullscreen layout for tablets and 2-in-1s: a large cover (swipe it sideways to skip), big transport and seek, and the queue as tall rows. Tap a row to play it, drag its grip to reorder (the list scrolls when you reach an edge), swipe it sideways to remove it (with Undo), long-press for more. **Add** opens the search as a sheet from the bottom. Portrait and narrow windows stack the queue under the player. Escape, F11 or the button in the corner leaves it. See [ADR 0015](docs/adr/0015-touch-mode.md).
-- **Discord**: turn on **Accounts → Discord → Show What I’m Playing** and Discord shows the song, artist and artwork as your status. Discord only accepts this from a registered application: create one named "Banshee" at <https://discord.com/developers/applications> and paste its Application ID there.
-- **MPRIS**: GNOME Shell, media keys and `playerctl` control playback. `playerctl open <YouTube or Spotify link>` queues it.
+<img width="741" height="713" alt="Screenshot From 2026-09-27 00-25-20" src="https://github.com/user-attachments/assets/780419c8-b513-44a1-a565-6f8787e3d0d1" />
 
 ### What Banshee remembers
 
 Your queue, the current item and the second you were at, recent searches and their results, every track you have seen, volume and window layout are saved to `~/.var/app/io.github.castrojo.Banshee/data/banshee/`: the queue within half a second of every change and every ~5 s of playback, searches within two seconds, and everything again on quit, logout or `kill` (SIGTERM/SIGINT/SIGHUP). A hard crash or SIGKILL loses at most the last fraction of a second. Relaunching restores all of it; press Play to resume where you left off. See [ADR 0012](docs/adr/0012-durable-app-memory.md).
+
+<img width="3166" height="1956" alt="Screenshot From 2026-09-27 00-24-39" src="https://github.com/user-attachments/assets/e9147c48-d160-4d3b-9252-e540feb6bc25" />
 
 ## Accounts
 
@@ -51,8 +47,8 @@ Open **Menu → Accounts** (Ctrl+,).
 ## Current limitations
 
 - YouTube's web API and stream extraction are unofficial and can change; update the Flatpak when searches or playback break. The Flatpak bundles pinned `yt-dlp`, its EJS challenge scripts and Deno.
-- Videos play at 360p: YouTube no longer offers higher-resolution single-file streams without a proof-of-origin token.
-- Spotify playback requires Premium; Spotify has removed some Web API endpoints (artist top tracks falls back to search).
+- Videos play at 360p: YouTube no longer offers higher-resolution single-file streams without a proof-of-origin token. (We don't care that much)
+- Spotify playback requires Premium; but you know this.
 - Discord status needs a Discord application ID you create once (see Use).
 
 ## Build from source
@@ -91,6 +87,11 @@ Banshee uses calendar-style versions `YY.MM.patch`, in the same format as freede
 | Git tag | `v25.09.1` |
 
 The Flatpak manifest has no version field. To release: set `version` in `Cargo.toml`, add a matching `<release>` entry at the top of the metainfo, then run `build-aux/release-flatpak.sh`, which refuses to build if the two disagree. See [docs/research/calendar-versioning.md](docs/research/calendar-versioning.md).
+
+## Inspiration
+
+![pic](https://github.com/user-attachments/assets/857a1c11-e9aa-4c1a-bc1b-85c7a82fa6ad)
+
 
 ## Licensing and attribution
 
