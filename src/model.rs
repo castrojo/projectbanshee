@@ -204,6 +204,15 @@ pub struct LibrarySection {
     pub collections: Vec<Collection>,
 }
 
+/// One row of the Home feed (e.g. "Quick picks", "Listen again", "Mixed for you").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HomeShelf {
+    pub title: String,
+    /// Small line above the title on YouTube Music ("Start radio from a song", …).
+    pub strapline: Option<String>,
+    pub items: Vec<SearchItem>,
+}
+
 /// Something the search page can show: a Track to queue or a Collection to open/queue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SearchItem {
