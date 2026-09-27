@@ -4,7 +4,7 @@ use crate::app::Controller;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use banshee::artwork::sized_thumbnail;
-use banshee::model::{CollectionKind, MediaKind, SearchItem, SourceKind, Track};
+use banshee::model::{CollectionKind, SearchItem, SourceKind, Track};
 use banshee::queue::QueueEntry;
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
@@ -120,21 +120,22 @@ pub enum RowMode {
     Queue,
 }
 
+/// Second line of a track: the artist, plus the length when known. The kind of item is
+/// shown by its artwork placeholder and badge, never as a word.
 pub fn subtitle_for(t: &Track) -> String {
-    let mut parts: Vec<String> = vec![t.kind.label().to_string(), t.artist.clone()];
-    if let Some(a) = t
-        .album
-        .as_ref()
-        .filter(|a| !a.is_empty() && t.kind == MediaKind::Music)
-    {
-        parts.push(a.clone());
-    }
     let d = t.duration_label();
-    if !d.is_empty() {
-        parts.push(d);
+    match (t.artist.is_empty(), d.is_empty()) {
+        (false, false) => format!("{} · {d}", t.artist),
+        (false, true) => t.artist.clone(),
+        (true, _) => d,
     }
-    parts.retain(|p| !p.is_empty());
-    parts.join(" · ")
+}
+
+/// The album (or the podcast, for an episode) as its own line, when known.
+pub fn album_line(t: &Track) -> Option<String> {
+    t.album
+        .clone()
+        .filter(|a| !a.trim().is_empty() && *a != t.title)
 }
 
 fn source_badge(s: SourceKind) -> &'static str {
@@ -149,6 +150,7 @@ mod imp {
         pub art: RefCell<Option<Artwork>>,
         pub title: RefCell<Option<gtk::Label>>,
         pub subtitle: RefCell<Option<gtk::Label>>,
+        pub album: RefCell<Option<gtk::Label>>,
         pub badge: RefCell<Option<gtk::Label>>,
         pub primary: RefCell<Option<gtk::Button>>,
         pub playing: RefCell<Option<gtk::Image>>,
@@ -201,8 +203,17 @@ impl ItemRow {
             .build();
         subtitle.add_css_class("dim-label");
         subtitle.add_css_class("caption");
+        let album = gtk::Label::builder()
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .visible(false)
+            .build();
+        album.add_css_class("dim-label");
+        album.add_css_class("caption");
+        album.add_css_class("item-album");
         text.append(&title);
         text.append(&subtitle);
+        text.append(&album);
         row.append(&text);
 
         let playing = gtk::Image::from_icon_name("media-playback-start-symbolic");
@@ -351,6 +362,7 @@ impl ItemRow {
         *imp.art.borrow_mut() = Some(art);
         *imp.title.borrow_mut() = Some(title);
         *imp.subtitle.borrow_mut() = Some(subtitle);
+        *imp.album.borrow_mut() = Some(album);
         *imp.badge.borrow_mut() = Some(badge);
         *imp.primary.borrow_mut() = Some(primary);
         *imp.playing.borrow_mut() = Some(playing);
@@ -368,6 +380,18 @@ impl ItemRow {
 
     pub fn bind(&self, ctl: &Rc<Controller>, item: RowItem, is_current: bool) {
         let imp = self.imp();
+        let album = match &item {
+            RowItem::Result(SearchItem::Track(t))
+            | RowItem::Queue {
+                entry: QueueEntry { track: t, .. },
+                ..
+            } => album_line(t),
+            RowItem::Result(SearchItem::Collection(_)) => None,
+        };
+        if let Some(l) = imp.album.borrow().as_ref() {
+            l.set_label(album.as_deref().unwrap_or_default());
+            l.set_visible(album.is_some());
+        }
         let (title, subtitle, thumb, icon, source, round) = match &item {
             RowItem::Result(SearchItem::Track(t))
             | RowItem::Queue {

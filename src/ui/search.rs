@@ -39,6 +39,8 @@ pub struct SearchPage {
     debounce: RefCell<Option<glib::SourceId>>,
     /// Query the list was last rendered for; the highlight is kept across re-renders of it.
     rendered_query: RefCell<String>,
+    /// The user moved the highlight with Up/Down for the current query.
+    user_moved: Cell<bool>,
     /// Records the query in Recent Searches once the user has settled on its results.
     settle: RefCell<Option<glib::SourceId>>,
     open_collection: RefCell<Option<OpenCollection>>,
@@ -307,6 +309,7 @@ impl SearchPage {
             errors: RefCell::new(HashMap::new()),
             debounce: RefCell::new(None),
             rendered_query: RefCell::new(String::new()),
+            user_moved: Cell::new(false),
             settle: RefCell::new(None),
             open_collection: RefCell::new(None),
         });
@@ -701,8 +704,13 @@ impl SearchPage {
             .collect();
         let n = objs.len();
         // Keep the user's highlight when late results re-render the same query.
+        // Late results re-rank the list. Keep the highlight on the same item only if the
+        // user put it there; otherwise Enter must always take the current best match.
         let same_query = *self.rendered_query.borrow() == q;
-        let keep = same_query
+        if !same_query {
+            self.user_moved.set(false);
+        }
+        let keep = (same_query && self.user_moved.get())
             .then(|| self.selected_item().map(|i| item_key(&i)))
             .flatten();
         self.store.splice(0, self.store.n_items(), &objs);
@@ -752,6 +760,7 @@ impl SearchPage {
     }
 
     fn move_selection(&self, delta: i32) {
+        self.user_moved.set(true);
         let n = self.store.n_items();
         if n == 0 {
             return;
@@ -787,6 +796,16 @@ impl SearchPage {
         let Some(item) = self.selected_item() else {
             return;
         };
+        log::debug!(
+            "Enter on “{}” queues {:?} (row {} of {})",
+            self.query(),
+            match &item {
+                SearchItem::Track(t) => t.title.as_str(),
+                SearchItem::Collection(c) => c.title.as_str(),
+            },
+            self.selection.selected(),
+            self.store.n_items()
+        );
         self.ctl.remember_query(&self.query());
         match item {
             SearchItem::Track(t) if play_next => self.ctl.play_next(t),

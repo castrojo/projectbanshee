@@ -12,13 +12,6 @@ pub enum MediaKind {
 }
 
 impl MediaKind {
-    pub fn label(self) -> &'static str {
-        match self {
-            MediaKind::Music => "Song",
-            MediaKind::Video => "Video",
-            MediaKind::Episode => "Episode",
-        }
-    }
     pub fn icon_name(self) -> &'static str {
         match self {
             MediaKind::Music => "audio-x-generic-symbolic",

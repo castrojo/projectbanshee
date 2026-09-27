@@ -2,7 +2,7 @@
 //! progress, extras (shuffle/repeat/volume) and the artwork-derived accent.
 
 use crate::app::{AppEvent, Controller};
-use crate::ui::rows::{Artwork, subtitle_for};
+use crate::ui::rows::{Artwork, album_line, subtitle_for};
 use adw::prelude::*;
 use banshee::model::{MediaKind, format_duration};
 use banshee::player::PlaybackState;
@@ -74,6 +74,8 @@ impl TrackInfo {
         title.set_label("Nothing playing");
         let artist = label(&["track-artist"]);
         artist.set_label("Search and press Enter to start a queue");
+        let album = label(&["track-album", "caption"]);
+        album.set_visible(false);
         let up_next = label(&["up-next", "caption"]);
         up_next.set_visible(false);
 
@@ -83,6 +85,7 @@ impl TrackInfo {
         text.set_width_request(96);
         text.append(&title);
         text.append(&artist);
+        text.append(&album);
         if show_up_next {
             text.append(&up_next);
         }
@@ -119,6 +122,9 @@ impl TrackInfo {
                     Some(e) => {
                         title.set_label(&e.track.title);
                         title.set_tooltip_text(Some(&e.track.title));
+                        let al = album_line(&e.track);
+                        album.set_label(al.as_deref().unwrap_or_default());
+                        album.set_visible(al.is_some());
                         artist.set_label(&if terse {
                             e.track.artist.clone()
                         } else {
@@ -138,6 +144,7 @@ impl TrackInfo {
                     }
                     None => {
                         title.set_label("Nothing playing");
+                        album.set_visible(false);
                         artist.set_label("Search and press Enter to start a queue");
                         art_btn.set_sensitive(false);
                         art2.load(&ctl, None);
