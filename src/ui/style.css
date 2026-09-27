@@ -35,13 +35,14 @@
 }
 
 .source-badge.spotify {
-  color: #1db954;
-  background-color: alpha(#1db954, 0.12);
+  /* Mixing with the text colour keeps contrast in light (darker) and dark (lighter) styles. */
+  color: color-mix(in srgb, #1db954 65%, currentColor);
+  background-color: alpha(#1db954, 0.14);
 }
 
 .source-badge.youtube {
-  color: #ff0033;
-  background-color: alpha(#ff0033, 0.10);
+  color: color-mix(in srgb, #ff1f44 60%, currentColor);
+  background-color: alpha(#ff1f44, 0.12);
 }
 
 .search-hero {
@@ -253,3 +254,4 @@
 .queue-list .item-row.played {
   opacity: 0.55;
 }
+
