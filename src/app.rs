@@ -134,6 +134,8 @@ pub struct Controller {
     link_seq: Cell<u64>,
     /// Entry whose stream was re-resolved after a playback error (retry once).
     retried_entry: Cell<Option<EntryId>>,
+    /// Entries whose stream is being resolved ahead of time.
+    prefetching: RefCell<std::collections::HashSet<EntryId>>,
     link_next: Cell<u64>,
     link_ready: RefCell<std::collections::BTreeMap<u64, Result<Track, String>>>,
     /// Bumped on sign-in/out so library fetches started for the old account are dropped.
@@ -214,6 +216,7 @@ impl Controller {
             prefs_save_pending: Cell::new(false),
             link_seq: Cell::new(0),
             retried_entry: Cell::new(None),
+            prefetching: RefCell::new(Default::default()),
             link_next: Cell::new(0),
             link_ready: RefCell::new(Default::default()),
             accounts_epoch: Cell::new(0),
@@ -951,6 +954,9 @@ impl Controller {
         let Some(next) = next else { return };
         if self.current_entry().is_some_and(|c| c.id == next.id)
             || self.resolved.borrow().contains_key(&next.id)
+            // One resolve per entry: back-to-back queue changes used to start duplicate
+            // yt-dlp runs, and the first URL then came back 403 when played.
+            || !self.prefetching.borrow_mut().insert(next.id)
         {
             return;
         }
@@ -959,6 +965,7 @@ impl Controller {
         glib::spawn_future_local(async move {
             let r = run(src.resolve(next.track.clone())).await;
             let Some(c) = weak.upgrade() else { return };
+            c.prefetching.borrow_mut().remove(&next.id);
             match r {
                 Ok(Ok(res)) => {
                     log::debug!("pre-resolved “{}”", next.track.title);

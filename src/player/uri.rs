@@ -10,9 +10,9 @@ use super::PlayerError;
 const BUFFER_SIZE_BYTES: i32 = 4 * 1024 * 1024;
 const BUFFER_DURATION_NS: i64 = 10 * 1_000_000_000;
 /// Fraction of the buffer that must fill before playback starts or resumes. GStreamer's
-/// default (0.6 of 10 s) made every track wait ~3 s; 0.05 starts after ~0.5 s of audio while still
+/// default (0.6 of 10 s) made every track wait ~3 s; 0.15 starts after ~1.5 s of audio while still
 /// downloading up to 10 s ahead to ride out network stalls.
-const START_WATERMARK: f64 = 0.05;
+const START_WATERMARK: f64 = 0.15;
 
 /// The video sink that renders into a `gdk::Paintable` for the GTK UI.
 pub(super) const PAINTABLE_SINK: &str = "gtk4paintablesink";
