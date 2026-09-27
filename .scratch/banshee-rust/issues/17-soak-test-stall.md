@@ -8,3 +8,7 @@
 
 - [ ] Reproduce under CPU load (e.g. `stress-ng --cpu 0` alongside a 50× loop of the soak test)
 - [ ] If Player Core drops a transition, fix it and keep the soak test as the regression test
+
+## Comments
+
+- 2026-09-26: 40 further runs (20 pairs running concurrently) after the review fixes: 0 stalls. Still unexplained; keep open at needs-triage.

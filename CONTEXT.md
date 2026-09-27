@@ -19,7 +19,7 @@ A queue-first GNOME player (Rust, GTK4/libadwaita, GStreamer) that streams music
 - **Cache**: Stale-while-revalidate JSON cache for Library and Collections (Fresh / Stale / Missing).
 - **Artwork Store**: Byte-bounded memory LRU of decoded textures plus a byte-bounded disk cache; garbage-collected periodically.
 - **App Memory**: Durable state that captures the user's musical wishes across quits and crashes (ADR 0012): the Queue with its **Resume Point** (current entry + second), **Recent Searches**, remembered search results, every Track seen (the persisted Local Index), and preferences. Distinct from the Cache, which is disposable.
-- **Recent Searches**: Queries the user queued from, newest first, shown on the empty Search page.
+- **Recent Searches**: Queries the user queued from, or whose results they stayed on for a moment (~2 s), newest first, shown on the empty Search page. Half-typed prefixes are never recorded.
 - **Now Playing Bar**: Bottom bar with artwork (click opens the artist on YouTube Music), metadata, transport, seek, volume.
 - **Mini Mode**: A compact presentation of the window showing only the Now Playing Bar. Not the primary window any more (ADR 0007).
 - **Flatpak Browser Session Bridge**: YouTube auth — sign in with the real browser via `xdg-open`, then import cookies from Flatpak Firefox/Chrome/Brave profiles (or a cookies.txt) filtered to Google/YouTube domains, stored 0600.

@@ -342,9 +342,10 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
     let mini = gio::SimpleAction::new_stateful("mini-mode", None, &false.to_variant());
     {
         let saved = Rc::new(Cell::new((1120, 760)));
-        let (w, toasts, exit_mini, compact) = (
+        let (w, outer, bar_handle, exit_mini, compact) = (
             window.downgrade(),
-            toasts.clone(),
+            outer.clone(),
+            bar_handle.clone(),
             exit_mini.clone(),
             now.compact_widgets.clone(),
         );
@@ -352,21 +353,24 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             let Some(w) = w.upgrade() else { return };
             let on = !a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
             a.set_state(&on.to_variant());
-            toasts.set_visible(!on);
             exit_mini.set_visible(on);
-            for c in &compact {
-                if on {
-                    c.set_visible(false);
-                } else {
-                    c.set_visible(true);
-                }
-            }
+            // Mini Mode is just the Now Playing Bar as the window content.
             if on {
                 saved.set((w.width(), w.height()));
+                outer.remove(&bar_handle);
+                w.set_content(Some(&bar_handle));
                 w.set_default_size(MINI_SIZE.0, MINI_SIZE.1);
             } else {
+                w.set_content(None::<&gtk::Widget>);
+                outer.add_bottom_bar(&bar_handle);
+                w.set_content(Some(&outer));
                 let (sw, sh) = saved.get();
                 w.set_default_size(sw.max(640), sh.max(480));
+            }
+            // Shuffle/repeat/volume only when there is room (the breakpoint hides them too).
+            let roomy = !on && w.current_breakpoint().is_none();
+            for c in &compact {
+                c.set_visible(roomy);
             }
         });
     }

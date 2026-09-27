@@ -14,6 +14,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const DEBOUNCE: Duration = Duration::from_millis(120);
+const SETTLE: Duration = Duration::from_millis(1800);
 
 pub struct SearchPage {
     pub root: gtk::Box,
@@ -36,6 +37,8 @@ pub struct SearchPage {
     debounce: RefCell<Option<glib::SourceId>>,
     /// Query the list was last rendered for; the highlight is kept across re-renders of it.
     rendered_query: RefCell<String>,
+    /// Records the query in Recent Searches once the user has settled on its results.
+    settle: RefCell<Option<glib::SourceId>>,
     open_collection: RefCell<Option<OpenCollection>>,
 }
 
@@ -206,6 +209,7 @@ impl SearchPage {
             errors: RefCell::new(HashMap::new()),
             debounce: RefCell::new(None),
             rendered_query: RefCell::new(String::new()),
+            settle: RefCell::new(None),
             open_collection: RefCell::new(None),
         });
 
@@ -420,6 +424,9 @@ impl SearchPage {
         if let Some(id) = self.debounce.borrow_mut().take() {
             id.remove();
         }
+        if let Some(id) = self.settle.borrow_mut().take() {
+            id.remove();
+        }
         let q = self.query();
         if q.is_empty() {
             self.ctl.set_last_search("", self.filter.get());
@@ -498,8 +505,12 @@ impl SearchPage {
                 match r.map_err(SourceError::Unavailable).and_then(|r| r) {
                     Ok(items) => {
                         p.ctl.remember_search(source, filter, &query, &items);
+                        let found = !items.is_empty();
                         p.remote.borrow_mut().insert(source, items);
                         p.errors.borrow_mut().remove(&source);
+                        if found {
+                            p.remember_when_settled(generation, &query);
+                        }
                     }
                     Err(e) => {
                         log::warn!("search {source}: {e}");
@@ -512,6 +523,24 @@ impl SearchPage {
             });
         }
         self.render();
+    }
+
+    /// A query whose results the user looked at for a moment counts as a Recent Search,
+    /// even if nothing was queued; half-typed prefixes never do.
+    fn remember_when_settled(self: &Rc<Self>, generation: u64, query: &str) {
+        if self.settle.borrow().is_some() {
+            return;
+        }
+        let (weak, query) = (Rc::downgrade(self), query.to_string());
+        let id = glib::timeout_add_local_once(SETTLE, move || {
+            if let Some(p) = weak.upgrade() {
+                p.settle.borrow_mut().take();
+                if p.generation.get() == generation {
+                    p.ctl.remember_query(&query);
+                }
+            }
+        });
+        *self.settle.borrow_mut() = Some(id);
     }
 
     fn update_spinner(&self) {
@@ -614,6 +643,15 @@ impl SearchPage {
     /// Enter: queue the highlighted result, then select the entry text so the next
     /// keystroke starts the next search.
     fn queue_selected(&self, play_next: bool) {
+        // A pasted YouTube / YouTube Music / Spotify link is queued as is.
+        let q = self.query();
+        if banshee::sources::youtube::parse_video_url(&q).is_some()
+            || banshee::sources::spotify::track_from_url(&q).is_some()
+        {
+            self.ctl.open_uri(&q);
+            self.entry.select_region(0, -1);
+            return;
+        }
         let Some(item) = self.selected_item() else {
             return;
         };

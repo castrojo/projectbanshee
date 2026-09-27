@@ -18,6 +18,7 @@ The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 - **Search** is focused when the window opens. Results appear as you type: matches from everything you have seen before show at once, and YouTube Music (and Spotify, if signed in) results merge in a moment later, ranked by fuzzy match. A spinner beside the entry shows when results are still coming.
 - **Enter** adds the highlighted result to the queue and selects the text, so the next word you type starts the next search. **Shift+Enter** plays it next, **Ctrl+Enter** plays it now, **Up/Down** move the highlight. Every row also has `+`.
 - **Filters**: All, Music, Videos, Podcasts.
+- **Links**: paste a YouTube, YouTube Music or Spotify link into Search and press Enter to queue it.
 - **Queue** is the sidebar (F9 toggles it). Drag rows to reorder, use `−` to remove (with Undo), activate a row to play it. Shuffle and repeat are in the Now Playing Bar.
 - **Library** shows your YouTube Music and Spotify playlists, liked songs, albums, artists and podcasts. Open one to browse it or use `+` to queue all of it. Library data is cached and refreshed in the background.
 - **Now Playing Bar**: click the artwork to open the artist on YouTube Music. Videos also show in the Video tab.
@@ -27,7 +28,7 @@ The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 
 ### What Banshee remembers
 
-Your queue, the current item and the second you were at, recent searches and their results, every track you have seen, volume and window layout are saved to `~/.var/app/io.github.castrojo.Banshee/data/banshee/` within a moment of every change and again on quit, logout or `kill`. Relaunching restores all of it; press Play to resume where you left off. See [ADR 0012](docs/adr/0012-durable-app-memory.md).
+Your queue, the current item and the second you were at, recent searches and their results, every track you have seen, volume and window layout are saved to `~/.var/app/io.github.castrojo.Banshee/data/banshee/`: the queue within half a second of every change and every ~5 s of playback, searches within two seconds, and everything again on quit, logout or `kill` (SIGTERM/SIGINT/SIGHUP). A hard crash or SIGKILL loses at most the last fraction of a second. Relaunching restores all of it; press Play to resume where you left off. See [ADR 0012](docs/adr/0012-durable-app-memory.md).
 
 ## Accounts
 
@@ -67,10 +68,12 @@ build-aux/sdk-run.sh cargo test
 Flatpak bundle (regenerate `build-aux/cargo-sources.json` with [flatpak-cargo-generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo) after changing dependencies):
 
 ```sh
-flatpak run org.flatpak.Builder --user --install-deps-from=flathub \
-  --force-clean --repo=repo build io.github.castrojo.Banshee.yaml
-flatpak build-bundle repo io.github.castrojo.Banshee.flatpak io.github.castrojo.Banshee
+flatpak-builder --user --install-deps-from=flathub --force-clean \
+  --repo=repo build io.github.castrojo.Banshee.yaml \
+  && flatpak build-bundle repo io.github.castrojo.Banshee.flatpak io.github.castrojo.Banshee
 ```
+
+Use the host `flatpak-builder` from a normal terminal. The Flatpak'd `org.flatpak.Builder` currently fails in `appstreamcli compose` because glycin cannot spawn its image-loader sandbox from inside it (see `.scratch/banshee-rust/issues/13-flatpak-bundle-compose.md`).
 
 Live tests against YouTube Music and Spotify are `#[ignore]`d: `build-aux/sdk-run.sh cargo test --test youtube_live -- --ignored --nocapture`.
 

@@ -43,6 +43,14 @@ struct EnvelopeRef<'a, T> {
     value: &'a T,
 }
 
+/// File-name-safe namespace; `path()` and `purge_namespace()` must agree on it.
+fn ns_slug(namespace: &str) -> String {
+    namespace
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}
+
 pub struct JsonCache {
     dir: PathBuf,
 }
@@ -65,10 +73,7 @@ impl JsonCache {
     /// `namespace` groups entries for purging (e.g. the source slug).
     fn path(&self, namespace: &str, key: &str) -> PathBuf {
         let digest = hex::encode(Sha256::digest(key.as_bytes()));
-        let ns: String = namespace
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .collect();
+        let ns = ns_slug(namespace);
         self.dir.join(format!("{ns}-{}.json", &digest[..32]))
     }
 
@@ -144,7 +149,7 @@ impl JsonCache {
 
     /// Delete every entry of a namespace (sign-out).
     pub fn purge_namespace(&self, namespace: &str) -> io::Result<usize> {
-        let prefix = format!("{namespace}-");
+        let prefix = format!("{}-", ns_slug(namespace));
         let mut n = 0;
         for e in fs::read_dir(&self.dir)? {
             let e = e?;

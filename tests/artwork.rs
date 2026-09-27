@@ -1,5 +1,6 @@
 use banshee::artwork::{ArtworkStore, DiskCache, sized_thumbnail};
 use banshee::memory;
+use gtk::prelude::*;
 use gtk::{gdk, glib};
 use std::time::{Duration, SystemTime};
 
@@ -101,4 +102,50 @@ fn memory_store_stays_within_byte_budget_and_rss_stays_flat() {
     assert_eq!(store.memory_len(), budget / (128 * 128 * 4));
     store.clear_memory();
     assert_eq!(store.memory_bytes(), 0);
+}
+
+fn png(px: i32) -> Vec<u8> {
+    texture(px, 200).save_to_png_bytes().to_vec()
+}
+
+fn block_on_with_timeout<T>(fut: impl std::future::Future<Output = T>) -> Option<T> {
+    let ctx = glib::MainContext::default();
+    ctx.block_on(async move {
+        futures::select! {
+            v = futures::FutureExt::fuse(Box::pin(fut)) => Some(v),
+            _ = futures::FutureExt::fuse(glib::timeout_future(Duration::from_secs(10))) => None,
+        }
+    })
+}
+
+#[test]
+fn a_cancelled_first_load_does_not_wedge_later_loads_of_the_same_url() {
+    let dir = tempfile::tempdir().unwrap();
+    let disk = DiskCache::new(dir.path(), 1 << 24).unwrap();
+    disk.put("test://cover", &png(64)).unwrap();
+    let store = ArtworkStore::new(disk, 1 << 24, reqwest::Client::new());
+    // First caller starts the fetch, then goes away (e.g. its row was recycled).
+    let first = store.load("test://cover");
+    assert!(futures::FutureExt::now_or_never(Box::pin(first)).is_none());
+    let tex = block_on_with_timeout(store.load("test://cover")).expect("second load hung");
+    assert_eq!(tex.unwrap().width(), 64);
+}
+
+#[test]
+fn large_artwork_is_downscaled_when_decoded() {
+    let dir = tempfile::tempdir().unwrap();
+    let disk = DiskCache::new(dir.path(), 1 << 26).unwrap();
+    disk.put("test://huge", &png(1200)).unwrap();
+    let store = ArtworkStore::new(disk, 1 << 26, reqwest::Client::new());
+    let tex = block_on_with_timeout(store.load("test://huge"))
+        .expect("load hung")
+        .unwrap();
+    assert!(
+        tex.width() <= banshee::artwork::MAX_DECODE_PX
+            && tex.height() <= banshee::artwork::MAX_DECODE_PX
+    );
+    assert!(
+        store.memory_bytes()
+            <= (banshee::artwork::MAX_DECODE_PX * banshee::artwork::MAX_DECODE_PX * 4) as usize
+    );
 }

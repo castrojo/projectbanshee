@@ -14,6 +14,9 @@ use std::time::SystemTime;
 
 pub const MEMORY_BUDGET: usize = 64 * 1024 * 1024;
 pub const DISK_BUDGET: u64 = 256 * 1024 * 1024;
+/// Decoded artwork is capped at this many pixels per side, whatever the source serves
+/// (Spotify covers are 640², podcast art can be 3000²).
+pub const MAX_DECODE_PX: i32 = 400;
 /// Largest artwork download accepted (guards against huge/hostile responses).
 const MAX_DOWNLOAD: usize = 4 * 1024 * 1024;
 
@@ -192,6 +195,8 @@ impl ArtworkStore {
     }
 
     /// Fetch artwork (memory → disk → network). Concurrent calls for one URL are coalesced.
+    /// The fetch runs as its own main-loop task, so a caller that goes away (a recycled
+    /// row) never leaves later callers waiting on a fetch nobody drives.
     pub async fn load(&self, url: &str) -> Result<gdk::Texture, ArtworkError> {
         if let Some(t) = self.cached(url) {
             return Ok(t);
@@ -204,24 +209,29 @@ impl ArtworkStore {
             waiters.len() == 1
         };
         if first {
-            let disk = self.disk.clone();
-            let http = self.http.clone();
+            let this = self.clone();
             let key = url.to_string();
-            let result = crate::runtime::run(fetch_and_decode(disk, http, key.clone()))
+            glib::spawn_future_local(async move {
+                let result = crate::runtime::run(fetch_and_decode(
+                    this.disk.clone(),
+                    this.http.clone(),
+                    key.clone(),
+                ))
                 .await
                 .unwrap_or_else(|e| Err(ArtworkError::Network(e)));
-            if let Ok(tex) = &result {
-                self.insert(&key, tex.clone());
-            }
-            let waiters = self
-                .inner
-                .borrow_mut()
-                .pending
-                .remove(&key)
-                .unwrap_or_default();
-            for w in waiters {
-                let _ = w.send(result.clone());
-            }
+                if let Ok(tex) = &result {
+                    this.insert(&key, tex.clone());
+                }
+                let waiters = this
+                    .inner
+                    .borrow_mut()
+                    .pending
+                    .remove(&key)
+                    .unwrap_or_default();
+                for w in waiters {
+                    let _ = w.send(result.clone());
+                }
+            });
         }
         rx.await
             .unwrap_or_else(|_| Err(ArtworkError::Network("request cancelled".into())))
@@ -294,9 +304,57 @@ async fn fetch_and_decode(
         }
     };
     tokio::task::spawn_blocking(move || {
-        gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes))
-            .map_err(|e| ArtworkError::Decode(e.to_string()))
+        let tex = gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes))
+            .map_err(|e| ArtworkError::Decode(e.to_string()))?;
+        Ok(downscale(tex, MAX_DECODE_PX))
     })
     .await
     .map_err(|e| ArtworkError::Decode(e.to_string()))?
+}
+
+/// Box-filter `tex` down so neither side exceeds `max`; smaller images are returned as is.
+fn downscale(tex: gdk::Texture, max: i32) -> gdk::Texture {
+    let (w, h) = (tex.width(), tex.height());
+    if w <= max && h <= max {
+        return tex;
+    }
+    let scale = f64::from(max) / f64::from(w.max(h));
+    let (nw, nh) = (
+        ((f64::from(w) * scale).round() as i32).max(1),
+        ((f64::from(h) * scale).round() as i32).max(1),
+    );
+    let mut dl = gdk::TextureDownloader::new(&tex);
+    dl.set_format(gdk::MemoryFormat::R8g8b8a8Premultiplied);
+    let (src, stride) = dl.download_bytes();
+    drop(tex);
+    let (w, h, nw_u, nh_u) = (w as usize, h as usize, nw as usize, nh as usize);
+    let mut out = vec![0u8; nw_u * nh_u * 4];
+    for y in 0..nh_u {
+        let (y0, y1) = (y * h / nh_u, ((y + 1) * h / nh_u).max(y * h / nh_u + 1));
+        for x in 0..nw_u {
+            let (x0, x1) = (x * w / nw_u, ((x + 1) * w / nw_u).max(x * w / nw_u + 1));
+            let mut acc = [0u32; 4];
+            for sy in y0..y1 {
+                let row = &src[sy * stride..];
+                for sx in x0..x1 {
+                    for c in 0..4 {
+                        acc[c] += u32::from(row[sx * 4 + c]);
+                    }
+                }
+            }
+            let n = ((y1 - y0) * (x1 - x0)) as u32;
+            let o = (y * nw_u + x) * 4;
+            for c in 0..4 {
+                out[o + c] = (acc[c] / n) as u8;
+            }
+        }
+    }
+    gdk::MemoryTexture::new(
+        nw,
+        nh,
+        gdk::MemoryFormat::R8g8b8a8Premultiplied,
+        &glib::Bytes::from_owned(out),
+        nw_u * 4,
+    )
+    .upcast()
 }

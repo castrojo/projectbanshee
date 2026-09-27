@@ -194,15 +194,27 @@ impl YouTubeMusicSource {
                 return Err(SourceError::NotFound);
             }
             let yt = inner.anon().await?;
-            let tracks = timed(
+            let found = timed(
                 API_TIMEOUT,
                 yt.get_watch_playlist_from_video_id(VideoID::from_raw(id.as_str())),
             )
-            .await?;
-            let track = tracks
-                .into_iter()
-                .find(|t| t.video_id.get_raw() == id)
-                .ok_or(SourceError::NotFound)?;
+            .await
+            .and_then(|tracks| {
+                tracks
+                    .into_iter()
+                    .find(|t| t.video_id.get_raw() == id)
+                    .ok_or(SourceError::NotFound)
+            });
+            let track = match found {
+                Ok(t) => t,
+                Err(e) => {
+                    // Plain youtube.com videos often have no music queue: ask yt-dlp instead.
+                    log::info!(
+                        "watch playlist lookup for {id} failed ({e}); falling back to yt-dlp"
+                    );
+                    return inner.ytdlp_metadata(id, kind).await;
+                }
+            };
             Ok(Track {
                 id,
                 kind,
@@ -543,6 +555,38 @@ impl Inner {
                 ))
             }
         }
+    }
+
+    /// Track metadata for a video id straight from yt-dlp (no stream selection).
+    async fn ytdlp_metadata(&self, id: String, kind: MediaKind) -> SourceResult<Track> {
+        let mut cmd = tokio::process::Command::new(&self.ytdlp);
+        cmd.args([
+            "-J",
+            "--skip-download",
+            "--no-playlist",
+            "--no-warnings",
+            "--no-progress",
+            "--",
+        ])
+        .arg(format!("https://www.youtube.com/watch?v={id}"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+        let child = cmd.spawn().map_err(cookies::spawn_error)?;
+        let output = tokio::time::timeout(RESOLVE_TIMEOUT, child.wait_with_output())
+            .await
+            .map_err(|_| {
+                SourceError::Extraction(format!(
+                    "yt-dlp timed out after {} s",
+                    RESOLVE_TIMEOUT.as_secs()
+                ))
+            })?
+            .map_err(|e| SourceError::Extraction(format!("yt-dlp failed: {e}")))?;
+        if !output.status.success() {
+            return Err(map_ytdlp_failure(&String::from_utf8_lossy(&output.stderr)));
+        }
+        parse_ytdlp_metadata(&output.stdout, id, kind)
     }
 
     async fn resolve(&self, track: Track) -> SourceResult<Resolved> {
@@ -1451,6 +1495,39 @@ struct YtDlpFormat {
     http_headers: Option<BTreeMap<String, String>>,
 }
 
+#[derive(Deserialize)]
+struct YtDlpMeta {
+    title: Option<String>,
+    uploader: Option<String>,
+    channel: Option<String>,
+    channel_id: Option<String>,
+    duration: Option<f64>,
+    thumbnail: Option<String>,
+}
+
+fn parse_ytdlp_metadata(stdout: &[u8], id: String, kind: MediaKind) -> SourceResult<Track> {
+    let m: YtDlpMeta = serde_json::from_slice(stdout)
+        .map_err(|e| SourceError::Parse(format!("yt-dlp returned unreadable JSON: {e}")))?;
+    let title = m
+        .title
+        .filter(|t| !t.is_empty())
+        .ok_or(SourceError::NotFound)?;
+    Ok(Track {
+        id,
+        kind,
+        source: SourceKind::YouTubeMusic,
+        title,
+        artist: m.channel.or(m.uploader).unwrap_or_default(),
+        artist_id: m.channel_id.filter(|c| !c.is_empty()),
+        album: None,
+        duration_secs: m
+            .duration
+            .filter(|d| d.is_finite() && *d >= 0.0)
+            .map(|d| d.round() as u32),
+        thumbnail_url: m.thumbnail,
+    })
+}
+
 fn parse_ytdlp_json(stdout: &[u8], video: bool) -> SourceResult<Resolved> {
     let info: YtDlpInfo = serde_json::from_slice(stdout)
         .map_err(|e| SourceError::Parse(format!("yt-dlp returned unreadable JSON: {e}")))?;
@@ -1517,6 +1594,20 @@ fn map_ytdlp_failure(stderr: &str) -> SourceError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ytdlp_metadata_maps_title_channel_and_duration() {
+        let json = br#"{"title":"Never Gonna Give You Up","uploader":"RickAstleyVEVO","channel":"Rick Astley","channel_id":"UCuAXFkgsw1L7xaCfnd5JJOw","duration":212.0,"thumbnail":"https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"}"#;
+        let t = parse_ytdlp_metadata(json, "dQw4w9WgXcQ".into(), MediaKind::Video).unwrap();
+        assert_eq!(t.title, "Never Gonna Give You Up");
+        assert_eq!(t.artist, "Rick Astley");
+        assert_eq!(t.artist_id.as_deref(), Some("UCuAXFkgsw1L7xaCfnd5JJOw"));
+        assert_eq!(t.duration_secs, Some(212));
+        assert_eq!(
+            parse_ytdlp_metadata(b"{}", "x".into(), MediaKind::Video),
+            Err(SourceError::NotFound)
+        );
+    }
+
     use super::*;
 
     #[test]

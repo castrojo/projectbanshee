@@ -121,6 +121,8 @@ pub struct Controller {
     resume_at: Cell<Option<(EntryId, Duration)>>,
     prefs_save_pending: Cell<bool>,
     link_seq: Cell<u64>,
+    /// Entry whose stream was re-resolved after a playback error (retry once).
+    retried_entry: Cell<Option<EntryId>>,
     link_next: Cell<u64>,
     link_ready: RefCell<std::collections::BTreeMap<u64, Result<Track, String>>>,
     /// Bumped on sign-in/out so library fetches started for the old account are dropped.
@@ -199,6 +201,7 @@ impl Controller {
             resume_at: Cell::new(None),
             prefs_save_pending: Cell::new(false),
             link_seq: Cell::new(0),
+            retried_entry: Cell::new(None),
             link_next: Cell::new(0),
             link_ready: RefCell::new(Default::default()),
             accounts_epoch: Cell::new(0),
@@ -656,6 +659,7 @@ impl Controller {
                     c.last_state.set(Some(*s));
                     if *s == PlaybackState::Playing {
                         c.failures.set(0);
+                        c.retried_entry.set(None);
                         if let Some((id, at)) = c.resume_at.take() {
                             if c.current_entry().is_some_and(|e| e.id == id) {
                                 c.seek(at);
@@ -680,7 +684,27 @@ impl Controller {
                 }
                 PlayerEvent::Finished => c.advance(Advance::Finished),
                 PlayerEvent::Error(e) => {
-                    let title = c.current_entry().map(|e| e.track.title).unwrap_or_default();
+                    let current = c.current_entry();
+                    // Stream URLs can be rejected (HTTP 403) or expire; re-resolve once
+                    // before giving up on the entry.
+                    if let (Some(entry), banshee::player::PlayerError::Stream(_)) = (&current, e) {
+                        if c.retried_entry.get() != Some(entry.id) {
+                            log::info!(
+                                "stream failed for “{}” ({e}); re-resolving once",
+                                entry.track.title
+                            );
+                            c.retried_entry.set(Some(entry.id));
+                            c.resolved.borrow_mut().remove(&entry.id);
+                            // Continue from where the stream broke off.
+                            let (pos, _) = c.last_position.get();
+                            if pos > Duration::from_secs(5) {
+                                c.resume_at.set(Some((entry.id, pos)));
+                            }
+                            c.start_entry(entry.clone());
+                            return;
+                        }
+                    }
+                    let title = current.map(|e| e.track.title).unwrap_or_default();
                     c.playback_failed(format!("Couldn’t play “{title}”: {e}"));
                 }
                 PlayerEvent::VideoPaintable(p) => c.emit(AppEvent::Video(p.clone())),
@@ -1094,10 +1118,12 @@ impl Controller {
             let r = run(src.library()).await;
             drop(busy);
             let Some(c) = weak.upgrade() else { return };
-            c.library_inflight.borrow_mut().remove(&source);
             if c.accounts_epoch.get() != epoch {
-                return; // signed out or switched account meanwhile
+                // Signed out or switched account meanwhile; accounts_changed already
+                // cleared the in-flight set, so don't touch the new fetch's marker.
+                return;
             }
+            c.library_inflight.borrow_mut().remove(&source);
             match r.map_err(SourceError::Unavailable).and_then(|r| r) {
                 Ok(sections) => {
                     c.cache_put(ns, "library", &sections);

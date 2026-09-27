@@ -183,7 +183,7 @@ impl NowPlaying {
 
         let this = Rc::new(Self {
             root,
-            compact_widgets: vec![progress.clone().upcast(), extras.clone().upcast()],
+            compact_widgets: vec![extras.clone().upcast()],
         });
 
         // --- behaviour

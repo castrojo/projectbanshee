@@ -12,7 +12,7 @@ Four JSON files in `$XDG_DATA_HOME/banshee/` (Flatpak: `~/.var/app/io.github.cas
 | File | Contents | Written |
 | --- | --- | --- |
 | `session.json` | The whole Queue (entries, current entry, shuffle order and pre-shuffle order, repeat mode, next entry id) and the resume position in seconds | 400 ms after any queue change, every ~5 s of playback, on pause, on window close and on quit |
-| `search.json` | Recent Searches (50, newest first, case-insensitive dedup; a query is recorded when the user queues from it), the last 300 result lists keyed by (source, filter, normalised query), and the last query + filter | 2 s after a change, on quit |
+| `search.json` | Recent Searches (50, newest first, case-insensitive dedup; a query is recorded when the user queues from it or stays on its results for ~2 s), the last 300 result lists keyed by (source, filter, normalised query), and the last query + filter | 2 s after a change, on quit |
 | `seen.json` | Every Track seen (search results, library, collections, queue), up to 20 000 — the persisted Local Index that powers instant fuzzy results | 5 s after a change, on quit |
 | `prefs.json` | Volume, window size/maximized, queue sidebar visibility, Mini Mode | On change (volume) and window close |
 

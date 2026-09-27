@@ -100,3 +100,14 @@ fn weighted_lru_ttl_expires_entries() {
     assert_eq!(l.get(&"q"), None);
     assert_eq!(l.total_weight(), 0);
 }
+
+#[test]
+fn purging_a_namespace_with_punctuation_removes_its_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let c = JsonCache::new(dir.path()).unwrap();
+    c.put("yt-music", "a", &1u32).unwrap();
+    c.put("spotify:user", "b", &2u32).unwrap();
+    assert_eq!(c.purge_namespace("yt-music").unwrap(), 1);
+    assert_eq!(c.get::<u32>("yt-music", "a", HOUR), Lookup::Missing);
+    assert_eq!(c.get::<u32>("spotify:user", "b", HOUR), Lookup::Fresh(2));
+}
