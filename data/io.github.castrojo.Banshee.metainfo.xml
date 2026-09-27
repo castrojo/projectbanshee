@@ -33,6 +33,9 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.1" date="2026-09-27">
+      <description><p>Source badges are readable in the dark style.</p></description>
+    </release>
     <release version="0.2.0" date="2026-09-27">
       <description><p>Rewritten in Rust with a queue-first layout, fast fuzzy search, videos, podcasts, Spotify, a library and durable app memory.</p></description>
     </release>
