@@ -15,4 +15,4 @@ ADR 0009 read "export to Discord" as copying links and opening the Discord Flatp
 
 ## Consequences
 - Works with the Discord Flatpak without extra portals; nothing leaves the machine except through Discord.
-- Requires a one-time Discord developer application created by the user (the app name is what Discord shows as "Listening to …").
+- Requires a one-time Discord developer application created by the user (its name — "Banshee" — is what Discord shows as "Listening to …").

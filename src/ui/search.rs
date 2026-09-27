@@ -450,7 +450,10 @@ impl SearchPage {
             }
         });
         page.render_recent();
-        page.restore_last_search();
+        // Only the main Search page carries the remembered query; Mini's quick-add starts empty.
+        if !compact {
+            page.restore_last_search();
+        }
         page
     }
 
@@ -542,7 +545,9 @@ impl SearchPage {
         }
         let q = self.query();
         if q.is_empty() {
-            self.ctl.set_last_search("", self.filter.get());
+            if !self.compact {
+                self.ctl.set_last_search("", self.filter.get());
+            }
             self.remote.borrow_mut().clear();
             self.errors.borrow_mut().clear();
             self.pending.set(0);
@@ -554,7 +559,9 @@ impl SearchPage {
         }
         // A pasted link is queued as is on Enter; never searched or remembered.
         if is_link(&q) {
-            self.ctl.set_last_search("", self.filter.get());
+            if !self.compact {
+                self.ctl.set_last_search("", self.filter.get());
+            }
             self.remote.borrow_mut().clear();
             self.errors.borrow_mut().clear();
             self.pending.set(0);
@@ -566,7 +573,9 @@ impl SearchPage {
         }
         // Memoised remote results show instantly.
         let filter = self.filter.get();
-        self.ctl.set_last_search(&q, filter);
+        if !self.compact {
+            self.ctl.set_last_search(&q, filter);
+        }
         // Previous results stay only if they still fuzzy-match the new text, so the list
         // never goes blank between keystrokes but never offers an unrelated item either.
         {
@@ -634,7 +643,9 @@ impl SearchPage {
                         p.remote.borrow_mut().insert(source, items);
                         p.errors.borrow_mut().remove(&source);
                         if found {
-                            p.remember_when_settled(generation, &query);
+                            if !p.compact {
+                                p.remember_when_settled(generation, &query);
+                            }
                         }
                     }
                     Err(e) => {

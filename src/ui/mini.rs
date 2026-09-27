@@ -13,7 +13,7 @@ pub const COLLAPSED_HEIGHT: i32 = 128;
 pub const EXPANDED_HEIGHT: i32 = 470;
 
 pub struct MiniPlayer {
-    pub root: gtk::WindowHandle,
+    pub root: adw::ToastOverlay,
     pub quick_add: Rc<SearchPage>,
     revealer: gtk::Revealer,
     add_toggle: gtk::ToggleButton,
@@ -88,7 +88,10 @@ impl MiniPlayer {
         overlay.add_css_class("mini-capsule");
         overlay.add_css_class("banshee-accent");
 
-        let root = gtk::WindowHandle::builder().child(&overlay).build();
+        // Mini Mode has its own toast overlay: the main window's isn't mapped while it shows.
+        let handle = gtk::WindowHandle::builder().child(&overlay).build();
+        let root = adw::ToastOverlay::new();
+        root.set_child(Some(&handle));
         let this = Rc::new(Self {
             root,
             quick_add,

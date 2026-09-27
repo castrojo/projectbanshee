@@ -1,6 +1,6 @@
 # Project Banshee
 
-Project Banshee is a queue-first GNOME player in the spirit of the classic Banshee. **Queueing is the default action, not playing.** Type, press Enter (or `+`), keep typing: one queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order. It is written in Rust with GTK 4, libadwaita and GStreamer. It does not play local files or radio, and it is not affiliated with the original Banshee project.
+Project Banshee builds **Banshee**, a queue-first GNOME player in the spirit of the classic Banshee. **Queueing is the default action, not playing.** Type, press Enter (or `+`), keep typing: one queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order. It is written in Rust with GTK 4, libadwaita and GStreamer. It does not play local files or radio, and it is not affiliated with the original Banshee project.
 
 ## Install
 
@@ -24,7 +24,7 @@ The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 - **Library** shows your YouTube Music and Spotify playlists, liked songs, albums, artists and podcasts. Open one to browse it or use `+` to queue all of it. Library data is cached and refreshed in the background.
 - **Now Playing Bar**: click the artwork to open the artist on YouTube Music. Videos also show in the Video tab.
 - **Mini Mode** (Ctrl+M or the button in the Now Playing Bar) turns the window into a capsule lit by the cover art: track, Up next, transport and a seek line. Press `+` or Ctrl+F in it to search and queue without leaving Mini Mode (it also shows recent searches and Up Next); Escape closes the search. Space plays or pauses and scrolling over the capsule changes the volume.
-- **Discord**: turn on **Accounts → Discord → Show What I'm Playing** and Discord shows the song, artist and artwork as your status. Discord only accepts this from a registered application: create one named "Project Banshee" at <https://discord.com/developers/applications> and paste its Application ID there.
+- **Discord**: turn on **Accounts → Discord → Show What I'm Playing** and Discord shows the song, artist and artwork as your status. Discord only accepts this from a registered application: create one named "Banshee" at <https://discord.com/developers/applications> and paste its Application ID there.
 - **MPRIS**: GNOME Shell, media keys and `playerctl` control playback. `playerctl open <YouTube or Spotify link>` queues it.
 
 ### What Banshee remembers

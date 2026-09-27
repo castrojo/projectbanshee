@@ -16,6 +16,8 @@ fn main() -> glib::ExitCode {
     // Background panics are converted to errors by runtime::run; log any that reach here.
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
 
+    // The name GNOME Shell, sound settings and PipeWire show for this app.
+    glib::set_application_name("Banshee");
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
@@ -31,11 +33,11 @@ fn main() -> glib::ExitCode {
                 Ok(c) => *state.borrow_mut() = Some(c),
                 Err(e) => {
                     log::error!("{e}");
-                    let dlg = adw::AlertDialog::new(Some("Project Banshee Can’t Start"), Some(&e));
+                    let dlg = adw::AlertDialog::new(Some("Banshee Can’t Start"), Some(&e));
                     dlg.add_response("close", "_Close");
                     let win = adw::ApplicationWindow::builder()
                         .application(app)
-                        .title("Project Banshee")
+                        .title("Banshee")
                         .build();
                     let a = app.clone();
                     dlg.connect_response(None, move |_, _| a.quit());
@@ -127,7 +129,7 @@ fn install_app_actions(app: &adw::Application) {
         let a = app.clone();
         about.connect_activate(move |_, _| {
             let d = adw::AboutDialog::builder()
-                .application_name("Project Banshee")
+                .application_name("Banshee")
                 .application_icon(APP_ID)
                 .version(env!("CARGO_PKG_VERSION"))
                 .developer_name("Jorge O. Castro")

@@ -209,7 +209,6 @@ impl HomeView {
         add.add_css_class("osd");
         add.add_css_class("card-add");
         add.update_property(&[gtk::accessible::Property::Label("Add to queue")]);
-        art.root.add_overlay(&add);
         {
             let (ctl, item) = (self.ctl.clone(), item.clone());
             add.connect_clicked(move |_| match &item {
@@ -248,7 +247,6 @@ impl HomeView {
             .tooltip_text(&title)
             .build();
         button.add_css_class("flat");
-        button.add_css_class("home-card");
         button.update_property(&[gtk::accessible::Property::Label(&format!(
             "{title}, {subtitle}"
         ))]);
@@ -267,6 +265,14 @@ impl HomeView {
                 }
             });
         }
-        button.upcast()
+        // `+` is a sibling over the card (not a button inside a button), so it is its own
+        // focus stop and accessible element. It sits over the artwork's corner.
+        add.set_valign(gtk::Align::Start);
+        add.set_margin_top(CARD_PX - 36 + 6);
+        add.set_margin_end(12);
+        let card = gtk::Overlay::builder().child(&button).build();
+        card.add_overlay(&add);
+        card.add_css_class("home-card");
+        card.upcast()
     }
 }

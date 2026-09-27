@@ -14,7 +14,7 @@ use std::rc::Rc;
 pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWindow {
     let window = adw::ApplicationWindow::builder()
         .application(app)
-        .title("Project Banshee")
+        .title("Banshee")
         .default_width(ctl.prefs.borrow().window_width.max(360))
         .default_height(ctl.prefs.borrow().window_height.max(200))
         .maximized(ctl.prefs.borrow().maximized)
@@ -80,7 +80,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
     main_menu.append_section(None, &s1);
     let s2 = gio::Menu::new();
     s2.append(Some("_Keyboard Shortcuts"), Some("app.shortcuts"));
-    s2.append(Some("_About Project Banshee"), Some("app.about"));
+    s2.append(Some("_About Banshee"), Some("app.about"));
     main_menu.append_section(None, &s2);
     let menu_btn = gtk::MenuButton::builder()
         .icon_name("open-menu-symbolic")
@@ -245,6 +245,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             video_picture.clone(),
             stack.clone(),
         );
+        let mini_toasts = mini_player.root.clone();
         ctl.subscribe(move |ev| match ev {
             AppEvent::Toast(t) => {
                 let toast = adw::Toast::builder()
@@ -258,7 +259,13 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
                     toast.set_button_label(Some("Undo"));
                     toast.connect_button_clicked(move |_| undo());
                 }
-                toasts.add_toast(toast);
+                // Toasts go wherever the user is looking: Mini Mode or the full window.
+                match window2.upgrade() {
+                    Some(w) if w.content().is_some_and(|c| c == mini_toasts) => {
+                        mini_toasts.add_toast(toast)
+                    }
+                    _ => toasts.add_toast(toast),
+                }
             }
             AppEvent::Busy(b) => busy.set_visible(*b),
             AppEvent::Raise => {

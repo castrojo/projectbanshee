@@ -115,7 +115,7 @@ pub fn present(ctl: &Rc<Controller>, parent: &impl IsA<gtk::Widget>) {
         .build();
     let dc_help = adw::ActionRow::builder()
         .title("Create an Application ID")
-        .subtitle("Discord only shows statuses from registered applications. Create one named “Project Banshee” and paste its Application ID above.")
+        .subtitle("Discord only shows statuses from registered applications. Create one named “Banshee” and paste its Application ID above.")
         .activatable(true)
         .build();
     dc_help.add_suffix(&gtk::Image::from_icon_name("adw-external-link-symbolic"));

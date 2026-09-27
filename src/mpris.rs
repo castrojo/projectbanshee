@@ -202,7 +202,7 @@ fn root_prop(name: &str) -> Option<Variant> {
     Some(match name {
         "CanQuit" | "CanRaise" => true.to_variant(),
         "HasTrackList" => false.to_variant(),
-        "Identity" => "Project Banshee".to_variant(),
+        "Identity" => "Banshee".to_variant(),
         "DesktopEntry" => crate::paths::APP_ID.to_variant(),
         "SupportedUriSchemes" => vec!["https", "spotify"].to_variant(),
         "SupportedMimeTypes" => Vec::<String>::new().to_variant(),

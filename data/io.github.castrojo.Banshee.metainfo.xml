@@ -3,7 +3,7 @@
   <id>io.github.castrojo.Banshee</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>Project Banshee</name>
+  <name>Banshee</name>
   <summary>Build a queue of music, videos and podcasts as fast as you type</summary>
   <url type="homepage">https://github.com/castrojo/projectbanshee</url>
   <url type="bugtracker">https://github.com/castrojo/projectbanshee/issues</url>
@@ -12,7 +12,7 @@
   </developer>
   <description>
     <p>
-      Project Banshee is a queue-first player in the spirit of the classic Banshee. Search is focused when it opens: type, press Enter, keep typing. One queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order.
+      Banshee is a queue-first player in the spirit of the classic Banshee. Search is focused when it opens: type, press Enter, keep typing. One queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order.
     </p>
     <ul>
       <li>Instant fuzzy search that merges remembered and live results</li>
@@ -20,7 +20,7 @@
       <li>Queue, position and searches survive quitting</li>
       <li>MPRIS media controls, Mini Mode and Share to Discord</li>
     </ul>
-    <p>Project Banshee is not affiliated with the original Banshee project.</p>
+    <p>This is an independent project, not affiliated with the original Banshee media player.</p>
   </description>
   <launchable type="desktop-id">io.github.castrojo.Banshee.desktop</launchable>
   <categories>

@@ -1892,6 +1892,13 @@ fn parse_ytdlp_metadata(stdout: &[u8], id: String, kind: MediaKind) -> SourceRes
         .title
         .filter(|t| !t.is_empty())
         .ok_or(SourceError::NotFound)?;
+    // With --ignore-no-formats-error, a video that doesn't exist still "succeeds" with a
+    // placeholder title (`youtube video #<id>`) and no channel, uploader or length.
+    if m.channel.is_none() && m.uploader.is_none() && m.duration.is_none() {
+        return Err(SourceError::Unavailable(
+            "This video is unavailable".to_string(),
+        ));
+    }
     Ok(Track {
         id,
         kind,
@@ -1995,6 +2002,12 @@ mod tests {
             parse_ytdlp_metadata(b"{}", "x".into(), MediaKind::Video),
             Err(SourceError::NotFound)
         );
+        // What yt-dlp prints for an id that doesn't exist when format errors are ignored.
+        let ghost = br#"{"title":"youtube video #AAAAAAAAAAA","formats":[]}"#;
+        assert!(matches!(
+            parse_ytdlp_metadata(ghost, "AAAAAAAAAAA".into(), MediaKind::Video),
+            Err(SourceError::Unavailable(_))
+        ));
     }
 
     use super::*;
