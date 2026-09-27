@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/14
+
 - [x] `--ignore-config` added to the cookie import (`src/sources/cookies.rs`), metadata, and stream resolve (`src/sources/youtube.rs`)
 
 ## Comments

@@ -13,6 +13,8 @@ Remaining work is a layout design decision: which Now Playing Bar elements shrin
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/2
+
 - [x] Now Playing Bar fixed widths only apply when wide (breakpoint setters in `src/ui/window.rs`)
 - [ ] Wide-mode minimum (746 px) fits under the 720sp breakpoint, or the breakpoint moves up (clipping between ~720 and 746 px)
 - [ ] Now Playing Bar fits 360 px

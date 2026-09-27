@@ -6,5 +6,7 @@
 
 **Status:** needs-triage
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/20
+
 ## Comments
 

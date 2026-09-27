@@ -6,6 +6,8 @@
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/19
+
 - [ ] Capture screenshots (Home, Queue, Mini Mode), host them, add `<screenshots>` and `<branding>`
 
 ## Comments

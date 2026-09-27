@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/5
+
 - [x] Search shows `Ctrl+F Ctrl+L Alt+1`
 - [x] Library moved to General
 - [x] New "Mini Mode" section: Search and add to queue, Close search, Play or pause

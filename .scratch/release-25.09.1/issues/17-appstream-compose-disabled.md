@@ -6,6 +6,8 @@
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/17
+
 - [ ] Build on CI or a host where glycin's sandbox works, set `appstream-compose: true`, drop the host export workaround
 
 ## Comments

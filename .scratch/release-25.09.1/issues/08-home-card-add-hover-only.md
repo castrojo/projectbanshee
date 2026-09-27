@@ -6,6 +6,8 @@
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/8
+
 - [ ] Decide the resting visibility for the card `+`
 
 ## Comments

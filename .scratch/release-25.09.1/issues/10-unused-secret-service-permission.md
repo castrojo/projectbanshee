@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/10
+
 - [x] Permission removed from `io.github.castrojo.Banshee.yaml`
 - [x] `.scratch/banshee-rust/issues/14` notes it must be re-added with that work
 

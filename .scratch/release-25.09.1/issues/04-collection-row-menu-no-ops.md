@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/4
+
 - [x] `bind` disables `play-now`, `play-next` and `open-artist` while a Collection is bound, and re-enables them for tracks (rows are recycled)
 
 ## Comments

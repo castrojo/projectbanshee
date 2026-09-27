@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/12
+
 - [x] `sign_out` clears the token and deletes the file under the token lock
 - [x] `sign_in` saves under the lock and returns `SIGNED_OUT_MEANWHILE` if the token is gone
 - [x] Refresh saves under the lock, only when the token is still current

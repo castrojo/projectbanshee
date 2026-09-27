@@ -8,6 +8,8 @@ Fixing it changes when auto re-import happens: legacy jars that have no saved sp
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/11
+
 - [ ] Decide: drop the detect-browsers fallback, or allow it only when a jar exists and it came from a browser
 - [ ] Sign-out stays signed out across AuthRequired events
 

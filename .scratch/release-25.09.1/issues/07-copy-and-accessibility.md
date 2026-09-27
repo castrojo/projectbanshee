@@ -9,6 +9,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/7
+
 - [x] Metainfo: "your current song as your Discord status"
 - [x] Typographic apostrophes in those strings and in README
 - [x] Home card accessible label matches the tooltip

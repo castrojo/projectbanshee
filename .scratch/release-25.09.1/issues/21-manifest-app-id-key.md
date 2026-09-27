@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/21
+
 - [x] `id: io.github.castrojo.Banshee`
 
 ## Comments

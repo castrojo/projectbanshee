@@ -1,6 +1,6 @@
 # Release 25.09.1 audit
 
-Release audit of Banshee for 25.09.1: versioning, correctness, packaging, security, dependencies and a design review against CONTEXT.md and docs/adr. Each finding is one issue under `issues/`. Fixed issues have their checkboxes ticked and a comment with the evidence. Deferred issues carry `ready-for-human`, `needs-triage` or `wontfix`.
+Release audit of Banshee for 25.09.1: versioning, correctness, packaging, security, dependencies and a design review against CONTEXT.md and docs/adr. Each finding is one issue under `issues/`, mirrored on GitHub as #1–#22 (label `release-25.09.1`). Fixed issues have their checkboxes ticked and a comment with the evidence. Deferred issues carry `ready-for-human`, `needs-triage` or `wontfix`.
 
 Checks run on 2026-09-27 (GNOME SDK 50, rust-stable 1.98.1):
 - `cargo build --release --locked`, `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, `cargo test --locked`: pass (94 passed, 9 ignored)

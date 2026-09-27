@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/3
+
 - [x] Mini connects to its own quick-add entry's `stop-search` and closes the revealer
 
 ## Comments

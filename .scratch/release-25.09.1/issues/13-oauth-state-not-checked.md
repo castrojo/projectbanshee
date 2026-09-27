@@ -6,6 +6,8 @@
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/13
+
 - [ ] Report upstream, or own the loopback listener (verify path and state, loop until a match)
 
 ## Comments

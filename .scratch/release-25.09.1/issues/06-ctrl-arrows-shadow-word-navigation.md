@@ -8,6 +8,8 @@ This is a keybinding change that users will notice. Pick replacement accels (GNO
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/6
+
 - [ ] Decide the replacement accels
 - [ ] Update the accels and the shortcuts dialog (`src/main.rs:173-174`) and README
 

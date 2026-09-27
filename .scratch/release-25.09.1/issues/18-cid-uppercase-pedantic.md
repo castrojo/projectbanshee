@@ -6,5 +6,7 @@
 
 **Status:** wontfix
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/18
+
 ## Comments
 

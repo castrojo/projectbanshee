@@ -11,6 +11,8 @@ Bumping needs a lockfile change and `build-aux/cargo-sources.json` regenerated w
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/15
+
 - [ ] Bump time to >=0.3.47 and regenerate cargo-sources.json
 - [ ] Track librespot for quick-xml >=0.41 and an rsa replacement
 

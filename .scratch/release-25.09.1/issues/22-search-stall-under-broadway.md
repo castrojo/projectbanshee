@@ -8,6 +8,8 @@ Not reproduced outside the harness. The Mini Mode Escape fix (issue 03) only cal
 
 **Status:** needs-info
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/22
+
 - [ ] Reproduce on a real Wayland session: fresh profile, type a query right after launch, note the time to results
 
 ## Comments

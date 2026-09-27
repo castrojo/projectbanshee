@@ -6,6 +6,8 @@
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/9
+
 - [ ] Decide the copy and add an empty state for a signed-in source with no items
 
 ## Comments

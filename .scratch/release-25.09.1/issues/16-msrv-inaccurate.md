@@ -6,6 +6,8 @@
 
 **Status:** ready-for-human
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/16
+
 - [ ] Set `rust-version = "1.92"` and apply the let-chain clippy fixes in one change
 
 ## Comments

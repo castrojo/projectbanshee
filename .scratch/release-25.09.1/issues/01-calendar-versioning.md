@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**GitHub:** https://github.com/castrojo/projectbanshee/issues/1
+
 - [x] `Cargo.toml` / `Cargo.lock`: `25.9.1`
 - [x] `build.rs` emits `BANSHEE_VERSION=25.09.1`; About dialog uses it (`src/main.rs:135`)
 - [x] Metainfo `<release version="25.09.1" date="2026-09-27">` as the newest entry
