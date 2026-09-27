@@ -1,6 +1,8 @@
 [package]
 name = "banshee"
-version = "0.2.2"
+# Calendar version YY.MM.patch (25.09.1). SemVer forbids leading zeros, so Cargo holds the
+# normalised form; build.rs re-pads the month for the About dialog. See docs/research/calendar-versioning.md.
+version = "25.9.1"
 edition = "2024"
 rust-version = "1.85"
 license = "GPL-3.0-or-later"

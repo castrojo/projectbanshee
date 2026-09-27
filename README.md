@@ -24,7 +24,7 @@ The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 - **Library** shows your YouTube Music and Spotify playlists, liked songs, albums, artists and podcasts. Open one to browse it or use `+` to queue all of it. Library data is cached and refreshed in the background.
 - **Now Playing Bar**: click the artwork to open the artist on YouTube Music. Videos also show in the Video tab.
 - **Mini Mode** (Ctrl+M or the button in the Now Playing Bar) turns the window into a capsule lit by the cover art: track, Up next, transport and a seek line. Press `+` or Ctrl+F in it to search and queue without leaving Mini Mode (it also shows recent searches and Up Next); Escape closes the search. Space plays or pauses and scrolling over the capsule changes the volume.
-- **Discord**: turn on **Accounts → Discord → Show What I'm Playing** and Discord shows the song, artist and artwork as your status. Discord only accepts this from a registered application: create one named "Banshee" at <https://discord.com/developers/applications> and paste its Application ID there.
+- **Discord**: turn on **Accounts → Discord → Show What I’m Playing** and Discord shows the song, artist and artwork as your status. Discord only accepts this from a registered application: create one named "Banshee" at <https://discord.com/developers/applications> and paste its Application ID there.
 - **MPRIS**: GNOME Shell, media keys and `playerctl` control playback. `playerctl open <YouTube or Spotify link>` queues it.
 
 ### What Banshee remembers
@@ -75,6 +75,20 @@ build-aux/release-flatpak.sh
 It builds with `org.flatpak.Builder`, exports the finished tree with the host `flatpak build-export` (the builder's image loaders can't start their sandbox on some systems, which breaks appstream compose and icon validation), writes `io.github.castrojo.Banshee.flatpak` and installs it for the current user. The manifest sets `appstream-compose: false` for the same reason; validate the metadata with `appstreamcli validate data/io.github.castrojo.Banshee.metainfo.xml`.
 
 Live tests against YouTube Music and Spotify are `#[ignore]`d: `build-aux/sdk-run.sh cargo test --test youtube_live -- --ignored --nocapture`.
+
+### Versioning and releases
+
+Banshee uses calendar-style versions `YY.MM.patch`, in the same format as freedesktop-sdk (`25.08.x`); the current series is `25.09`. Cargo requires SemVer, which forbids leading zeros, so `Cargo.toml` holds the normalised form (`25.9.1`), as Helix does; `build.rs` re-pads the month for the About dialog. Everything user-facing reads `25.09.1`:
+
+| File | Form |
+|---|---|
+| `Cargo.toml`, `Cargo.lock` | `25.9.1` |
+| About dialog (`build.rs` → `BANSHEE_VERSION`) | `25.09.1` |
+| `data/io.github.castrojo.Banshee.metainfo.xml` `<release>` (newest first) | `25.09.1` |
+| `build-aux/release-flatpak.sh` (derived from `Cargo.toml`; export commit subject) | `25.09.1` |
+| Git tag | `v25.09.1` |
+
+The Flatpak manifest has no version field. To release: set `version` in `Cargo.toml`, add a matching `<release>` entry at the top of the metainfo, then run `build-aux/release-flatpak.sh`, which refuses to build if the two disagree. See [docs/research/calendar-versioning.md](docs/research/calendar-versioning.md).
 
 ## Licensing and attribution
 

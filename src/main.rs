@@ -132,7 +132,7 @@ fn install_app_actions(app: &adw::Application) {
             let d = adw::AboutDialog::builder()
                 .application_name("Banshee")
                 .application_icon(APP_ID)
-                .version(env!("CARGO_PKG_VERSION"))
+                .version(env!("BANSHEE_VERSION"))
                 .developer_name("Jorge O. Castro")
                 .license_type(gtk::License::Gpl30)
                 .website("https://github.com/castrojo/projectbanshee")

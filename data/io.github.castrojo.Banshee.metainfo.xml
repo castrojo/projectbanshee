@@ -18,7 +18,7 @@
       <li>Instant fuzzy search that merges remembered and live results</li>
       <li>Your YouTube Music and Spotify playlists, artists, albums, liked songs and podcasts</li>
       <li>Queue, position and searches survive quitting</li>
-      <li>MPRIS media controls, Mini Mode and Share to Discord</li>
+      <li>MPRIS media controls, Mini Mode and your current song as your Discord status</li>
     </ul>
     <p>This is an independent project, not affiliated with the original Banshee media player.</p>
   </description>
@@ -33,6 +33,13 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="25.09.1" date="2026-09-27">
+      <description>
+        <p>Banshee now uses calendar versions (year, month, patch), following the freedesktop SDK.</p>
+        <p>Escape closes the Mini Mode search while you type. Narrow windows keep more of the Now Playing Bar on screen. Menus on playlists, albums and podcasts no longer offer actions that do nothing. The keyboard shortcuts window lists every shortcut, including Mini Mode.</p>
+        <p>Signing out of Spotify always sticks. The app no longer has access to your login keyring, and stream extraction ignores stray yt-dlp configuration files.</p>
+      </description>
+    </release>
     <release version="0.2.2" date="2026-09-27">
       <description>
         <p>First search after launch no longer waits for the YouTube Music client; tracks start about twice as fast; the next track's stream is fetched once, ahead of time.</p>
