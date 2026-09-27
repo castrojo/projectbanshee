@@ -51,6 +51,12 @@ Open **Menu → Accounts** (Ctrl+,).
 - Spotify playback requires Premium; but you know this.
 - Discord status needs a Discord application ID you create once (see Use).
 
+## Touch Mode
+
+For 2 in 1's and tablets:
+
+![touch](https://github.com/user-attachments/assets/e94b63c1-2108-410d-ac2b-b31baebc5127)
+
 ## Build from source
 
 Everything builds inside the GNOME SDK; no host development headers are needed.
