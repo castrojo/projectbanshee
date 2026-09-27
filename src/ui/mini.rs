@@ -9,7 +9,7 @@ use adw::prelude::*;
 use std::rc::Rc;
 
 pub const WIDTH: i32 = 520;
-pub const COLLAPSED_HEIGHT: i32 = 118;
+pub const COLLAPSED_HEIGHT: i32 = 128;
 pub const EXPANDED_HEIGHT: i32 = 470;
 
 pub struct MiniPlayer {
@@ -75,6 +75,15 @@ impl MiniPlayer {
             .build();
         overlay.add_overlay(&scrim);
         overlay.add_overlay(&content);
+        // Transient volume readout while scrolling.
+        let osd = gtk::Label::builder()
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Start)
+            .margin_top(6)
+            .visible(false)
+            .build();
+        osd.add_css_class("mini-osd");
+        overlay.add_overlay(&osd);
         overlay.set_measure_overlay(&content, true);
         overlay.add_css_class("mini-capsule");
         overlay.add_css_class("banshee-accent");
@@ -93,21 +102,44 @@ impl MiniPlayer {
                 m.set_expanded(t.is_active());
             }
         });
-        // Escape in the quick-add closes it again.
+        // Escape closes the quick-add; Space plays/pauses unless you're typing.
         let keys = gtk::EventControllerKey::new();
-        let weak = Rc::downgrade(&this);
+        let (weak, c) = (Rc::downgrade(&this), ctl.clone());
         keys.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
-                if let Some(m) = weak.upgrade() {
-                    if m.add_toggle.is_active() {
-                        m.add_toggle.set_active(false);
-                        return glib::Propagation::Stop;
-                    }
+            let Some(m) = weak.upgrade() else { return glib::Propagation::Proceed };
+            match key {
+                gtk::gdk::Key::Escape if m.add_toggle.is_active() => {
+                    m.add_toggle.set_active(false);
+                    glib::Propagation::Stop
                 }
+                gtk::gdk::Key::space if !m.quick_add.entry.has_focus() => {
+                    c.toggle_play();
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
             }
-            glib::Propagation::Proceed
         });
         this.root.add_controller(keys);
+        // Scroll over the capsule to change the volume.
+        let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+        let c = ctl.clone();
+        let hide: Rc<std::cell::RefCell<Option<glib::SourceId>>> = Rc::default();
+        scroll.connect_scroll(move |_, _, dy| {
+            let v = (c.player.volume() - dy * 0.05).clamp(0.0, 1.0);
+            c.set_volume(v);
+            osd.set_label(&format!("Volume {}%", (v * 100.0).round() as u32));
+            osd.set_visible(true);
+            if let Some(id) = hide.borrow_mut().take() {
+                id.remove();
+            }
+            let (osd2, hide2) = (osd.clone(), hide.clone());
+            *hide.borrow_mut() = Some(glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
+                hide2.borrow_mut().take();
+                osd2.set_visible(false);
+            }));
+            glib::Propagation::Stop
+        });
+        top.add_controller(scroll);
         this
     }
 

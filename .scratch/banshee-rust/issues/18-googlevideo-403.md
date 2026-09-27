@@ -13,3 +13,4 @@
 
 - 2026-09-26: Retry path verified with a simulated refusal (a fake yt-dlp returning a URL that answers 403): the player logged `Forbidden`, re-resolved once and reached `Playing` (16 s in after 20 s), with no error toast. The real-world 403 remains unexplained and was not reproduced with stale or fresh cookies.
 - 2026-09-26: A cookie-less retry was tried and removed: no evidence cookies cause the 403, and it would break signed-in-only items on retry. Revisit if a real 403 log shows cookie involvement.
+- 2026-09-26: Recurred on "Got That Feelin (Clean Version)" in an instance with no cookies at all (signed out), so cookies are not the cause. The re-resolve retry fired ("re-resolving once"); the instance then aborted on an unrelated UI reentrancy bug (fixed), so the retry outcome of that attempt is unknown.

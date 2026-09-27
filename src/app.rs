@@ -941,13 +941,26 @@ impl Controller {
     pub fn set_volume(&self, v: f64) {
         self.player.set_volume(v.clamp(0.0, 1.0));
         self.emit(AppEvent::ModesChanged);
-        self.update_prefs(|p| p.volume = v.clamp(0.0, 1.0));
+        self.update_prefs(move |p| p.volume = v.clamp(0.0, 1.0));
     }
 
     /// Change a preference and save it shortly after (not only on window close, which
     /// logout/SIGTERM never emits).
-    pub fn update_prefs(&self, f: impl FnOnce(&mut Prefs)) {
-        f(&mut self.prefs.borrow_mut());
+    pub fn update_prefs(&self, f: impl FnOnce(&mut Prefs) + 'static) {
+        // Called from GTK notify handlers: a caller up the stack may still hold a borrow
+        // (a panic here would abort inside a signal), so defer instead of panicking.
+        let Ok(mut prefs) = self.prefs.try_borrow_mut() else {
+            log::debug!("prefs busy; deferring update");
+            let weak = self.weak();
+            glib::idle_add_local_once(move || {
+                if let Some(c) = weak.upgrade() {
+                    c.update_prefs(f);
+                }
+            });
+            return;
+        };
+        f(&mut prefs);
+        drop(prefs);
         if self.prefs_save_pending.replace(true) {
             return;
         }
@@ -990,9 +1003,10 @@ impl Controller {
         let id = client_id
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        self.update_prefs(|p| {
+        let saved_id = id.clone();
+        self.update_prefs(move |p| {
             p.discord_presence = enabled;
-            p.discord_client_id = id.clone();
+            p.discord_client_id = saved_id;
         });
         self.presence.configure(enabled, id);
         self.push_presence();

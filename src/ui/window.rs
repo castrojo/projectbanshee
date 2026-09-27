@@ -196,7 +196,9 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             if s.is_collapsed() {
                 toggle.set_active(false);
             } else {
-                toggle.set_active(ctl.prefs.borrow().show_queue);
+                // Copy first: set_active notifies, and that handler updates prefs.
+                let show = ctl.prefs.borrow().show_queue;
+                toggle.set_active(show);
             }
         });
     }
@@ -406,7 +408,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             let is_mini = mini.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
             let maximized = w.is_maximized();
             let (dw, dh) = w.default_size();
-            ctl.update_prefs(|p| {
+            ctl.update_prefs(move |p| {
                 p.maximized = maximized;
                 if !is_mini && !maximized && dw > 0 && dh > 0 {
                     p.window_width = dw;
@@ -428,14 +430,14 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
                 return;
             }
             let on = t.is_active();
-            ctl.update_prefs(|p| p.show_queue = on);
+            ctl.update_prefs(move |p| p.show_queue = on);
         });
     }
     {
         let ctl = ctl.clone();
         mini.connect_state_notify(move |a| {
             let on = a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
-            ctl.update_prefs(|p| p.mini_mode = on);
+            ctl.update_prefs(move |p| p.mini_mode = on);
         });
     }
     {

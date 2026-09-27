@@ -230,3 +230,12 @@
   background-color: alpha(white, 0.14);
   color: white;
 }
+
+.mini-osd {
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background-color: alpha(black, 0.55);
+  color: white;
+  font-size: 0.85em;
+  font-weight: 600;
+}
