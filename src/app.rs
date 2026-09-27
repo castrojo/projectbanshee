@@ -100,6 +100,10 @@ pub enum LibraryState {
 
 type Listener = Box<dyn Fn(&AppEvent)>;
 
+type PendingResolve = futures::future::Shared<
+    futures::future::LocalBoxFuture<'static, Result<Resolved, SourceError>>,
+>;
+
 pub struct Controller {
     pub app: adw::Application,
     queue: RefCell<Queue>,
@@ -134,8 +138,9 @@ pub struct Controller {
     link_seq: Cell<u64>,
     /// Entry whose stream was re-resolved after a playback error (retry once).
     retried_entry: Cell<Option<EntryId>>,
-    /// Entries whose stream is being resolved ahead of time.
-    prefetching: RefCell<std::collections::HashSet<EntryId>>,
+    /// Entries whose stream is being resolved ahead of time; starting one of them awaits
+    /// this resolve instead of running yt-dlp a second time for the same video.
+    prefetching: RefCell<HashMap<EntryId, PendingResolve>>,
     link_next: Cell<u64>,
     link_ready: RefCell<std::collections::BTreeMap<u64, Result<Track, String>>>,
     /// Bumped on sign-in/out so library fetches started for the old account are dropped.
@@ -871,11 +876,28 @@ impl Controller {
                 Some(r) => Ok(r),
                 None => {
                     let busy = c.busy_guard();
-                    let fut = c.source(entry.track.source).resolve(entry.track.clone());
-                    drop(c);
-                    let r = run(fut).await;
+                    // Next pressed while this entry's pre-resolve is still running: join it.
+                    let pending = c.prefetching.borrow().get(&entry.id).cloned();
+                    let r = match pending {
+                        Some(p) => {
+                            drop(c);
+                            log::debug!(
+                                "joining the running pre-resolve of “{}”",
+                                entry.track.title
+                            );
+                            p.await
+                        }
+                        None => {
+                            let fut = c.source(entry.track.source).resolve(entry.track.clone());
+                            drop(c);
+                            run(fut)
+                                .await
+                                .map_err(SourceError::Unavailable)
+                                .and_then(|r| r)
+                        }
+                    };
                     drop(busy);
-                    r.map_err(SourceError::Unavailable).and_then(|r| r)
+                    r
                 }
             };
             let Some(c) = weak.upgrade() else { return };
@@ -956,26 +978,36 @@ impl Controller {
             || self.resolved.borrow().contains_key(&next.id)
             // One resolve per entry: back-to-back queue changes used to start duplicate
             // yt-dlp runs, and the first URL then came back 403 when played.
-            || !self.prefetching.borrow_mut().insert(next.id)
+            || self.prefetching.borrow().contains_key(&next.id)
         {
             return;
         }
         let weak = self.weak();
         let src = self.source(next.track.source);
+        let track = next.track.clone();
+        let pending: PendingResolve =
+            futures::FutureExt::shared(futures::FutureExt::boxed_local(async move {
+                run(src.resolve(track))
+                    .await
+                    .map_err(SourceError::Unavailable)
+                    .and_then(|r| r)
+            }));
+        self.prefetching
+            .borrow_mut()
+            .insert(next.id, pending.clone());
         glib::spawn_future_local(async move {
-            let r = run(src.resolve(next.track.clone())).await;
+            let r = pending.await;
             let Some(c) = weak.upgrade() else { return };
             c.prefetching.borrow_mut().remove(&next.id);
             match r {
-                Ok(Ok(res)) => {
+                Ok(res) => {
                     log::debug!("pre-resolved “{}”", next.track.title);
                     let mut map = c.resolved.borrow_mut();
                     map.retain(|_, (t, _)| t.elapsed() < RESOLVED_TTL);
                     map.insert(next.id, (Instant::now(), res));
                 }
                 // Failure is reported when the entry actually plays.
-                Ok(Err(e)) => log::info!("pre-resolve of “{}” failed: {e}", next.track.title),
-                Err(e) => log::warn!("pre-resolve task failed: {e}"),
+                Err(e) => log::info!("pre-resolve of “{}” failed: {e}", next.track.title),
             }
         });
     }
