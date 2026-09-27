@@ -358,3 +358,60 @@ fn downscale(tex: gdk::Texture, max: i32) -> gdk::Texture {
     )
     .upcast()
 }
+
+/// A vivid colour representative of `tex` (saturation-weighted average), darkened until
+/// white text on it meets WCAG AA (4.5:1), for tinting the play button and Mini Mode.
+pub fn dominant_color(tex: &gdk::Texture) -> (u8, u8, u8) {
+    let mut dl = gdk::TextureDownloader::new(tex);
+    dl.set_format(gdk::MemoryFormat::R8g8b8a8);
+    let (bytes, stride) = dl.download_bytes();
+    let (w, h) = (tex.width().max(0) as usize, tex.height().max(0) as usize);
+    let step = (w.max(h) / 48).max(1);
+    let (mut r, mut g, mut b, mut wsum) = (0f64, 0f64, 0f64, 0f64);
+    for y in (0..h).step_by(step) {
+        for x in (0..w).step_by(step) {
+            let o = y * stride + x * 4;
+            let Some(px) = bytes.get(o..o + 4) else {
+                continue;
+            };
+            if px[3] < 128 {
+                continue;
+            }
+            let (pr, pg, pb) = (f64::from(px[0]), f64::from(px[1]), f64::from(px[2]));
+            let max = pr.max(pg).max(pb);
+            let min = pr.min(pg).min(pb);
+            // Favour saturated, mid-bright pixels; greys barely count.
+            let sat = if max > 0.0 { (max - min) / max } else { 0.0 };
+            let weight = 0.05 + sat * sat * (1.0 - ((max / 255.0) - 0.6).abs());
+            r += pr * weight;
+            g += pg * weight;
+            b += pb * weight;
+            wsum += weight;
+        }
+    }
+    if wsum <= 0.0 {
+        return (0x35, 0x84, 0xe4); // Adwaita blue
+    }
+    let (mut r, mut g, mut b) = (r / wsum, g / wsum, b / wsum);
+    let lum = |r: f64, g: f64, b: f64| {
+        let c = |v: f64| {
+            let v = v / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
+    };
+    // White on colour: (1.05) / (L + 0.05) >= 4.5  <=>  L <= 0.1833
+    for _ in 0..24 {
+        if lum(r, g, b) <= 0.1833 {
+            break;
+        }
+        r *= 0.9;
+        g *= 0.9;
+        b *= 0.9;
+    }
+    (r.round() as u8, g.round() as u8, b.round() as u8)
+}

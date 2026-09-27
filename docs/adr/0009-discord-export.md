@@ -1,7 +1,7 @@
 # ADR 0009: Share to Discord via clipboard + discord:// launch
 
 ## Status
-Accepted.
+Superseded by ADR 0013.
 
 ## Context
 "Export music to the Discord Flatpak" is ambiguous. Options:

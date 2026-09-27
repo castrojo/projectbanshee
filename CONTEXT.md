@@ -21,9 +21,11 @@ A queue-first GNOME player (Rust, GTK4/libadwaita, GStreamer) that streams music
 - **App Memory**: Durable state that captures the user's musical wishes across quits and crashes (ADR 0012): the Queue with its **Resume Point** (current entry + second), **Recent Searches**, remembered search results, every Track seen (the persisted Local Index), and preferences. Distinct from the Cache, which is disposable.
 - **Recent Searches**: Queries the user queued from, or whose results they stayed on for a moment (~2 s), newest first, shown on the empty Search page. Half-typed prefixes are never recorded.
 - **Now Playing Bar**: Bottom bar with artwork (click opens the artist on YouTube Music), metadata, transport, seek, volume.
-- **Mini Mode**: A compact presentation of the window showing only the Now Playing Bar. Not the primary window any more (ADR 0007).
+- **Mini Mode**: A compact, artwork-lit capsule that replaces the window content: blurred cover backdrop, track and Up next, transport, hairline seek bar, and a quick-add search that slides open under it (ADR 0014).
+- **Home**: YouTube Music's personalised shelves shown on the empty Search page under Recent Searches; songs queue on tap, collections open (ADR 0014).
+- **Up next**: The entry that plays after the current one, shown in the Now Playing Bar and Mini Mode.
 - **Flatpak Browser Session Bridge**: YouTube auth — sign in with the real browser via `xdg-open`, then import cookies from Flatpak Firefox/Chrome/Brave profiles (or a cookies.txt) filtered to Google/YouTube domains, stored 0600. When YouTube rejects the session (the browser rotated its cookies), Banshee re-imports once from the same browser profile automatically.
 - **Spotify Browser Sign-in**: OAuth PKCE in the real browser with a loopback redirect; refresh token stored 0600.
-- **Share to Discord**: Copies the current Track or the Queue as links to the clipboard and opens the Discord Flatpak via `discord://` (ADR 0009).
+- **Discord Presence**: The playing Track (title, artist, artwork, link) shown as the user's Discord status over Discord's local IPC socket; needs a Discord application ID the user creates once (ADR 0013).
 - **MPRIS Service**: `org.mpris.MediaPlayer2` and `.Player` on D-Bus for GNOME Shell, media keys and `playerctl`; `OpenUri` queues YouTube/Spotify links.
 - **GNOME Compliance**: libadwaita widgets and HIG patterns, adaptive layout, standard shortcuts, AppStream metadata.

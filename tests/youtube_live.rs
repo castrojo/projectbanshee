@@ -3,7 +3,9 @@
 //! `live_signed_in_library` additionally needs `BANSHEE_LIVE_IMPORT=1`: it imports the first
 //! detected Flatpak browser session, reads the library, and signs out again.
 
-use banshee::model::{CollectionKind, MediaKind, Playable, SearchFilter, SearchItem, Track};
+use banshee::model::{
+    Collection, CollectionKind, MediaKind, Playable, SearchFilter, SearchItem, SourceKind, Track,
+};
 use banshee::runtime::runtime;
 use banshee::sources::youtube::{YouTubeMusicSource, parse_video_url};
 use banshee::sources::{AudioSource, cookies};
@@ -214,6 +216,82 @@ fn live_collections_and_links() {
         );
         assert!(!track.title.is_empty() && track.title != track.id);
     });
+}
+
+#[test]
+#[ignore = "live network"]
+fn live_home() {
+    // Signed out: an empty private config dir hides any imported jar. glib caches the config
+    // dir on first use, so this only takes effect when the test runs first in its process.
+    let config = std::env::temp_dir().join(format!("banshee-live-home-{}", std::process::id()));
+    // SAFETY: set before this test reads the environment or spawns threads; threads left by
+    // earlier tests (idle runtime workers) do not read it concurrently.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", &config) };
+    init_logging();
+    runtime().block_on(async {
+        let yt = YouTubeMusicSource::new();
+        if yt.is_signed_in() {
+            println!("config dir already resolved to an imported jar; run live_home on its own");
+            return;
+        }
+        let t = Instant::now();
+        let shelves = yt.home().await.expect("home");
+        let took = t.elapsed();
+        for s in &shelves {
+            println!(
+                "{}{}: {}",
+                s.title,
+                s.strapline
+                    .as_deref()
+                    .map(|l| format!(" [{l}]"))
+                    .unwrap_or_default(),
+                describe(&s.items)
+            );
+        }
+        println!("home (signed out): {} shelves in {took:?}", shelves.len());
+        assert!(!shelves.is_empty());
+        assert!(
+            shelves
+                .iter()
+                .all(|s| !s.items.is_empty() && !s.title.is_empty())
+        );
+
+        let collections: Vec<Collection> = shelves
+            .iter()
+            .flat_map(|s| &s.items)
+            .filter_map(|i| match i {
+                SearchItem::Collection(c) => Some(c.clone()),
+                SearchItem::Track(_) => None,
+            })
+            .take(2)
+            .collect();
+        // A song radio has no playlist page: it opens through its watch playlist.
+        let radio = Collection {
+            id: "RDAMVMdQw4w9WgXcQ".to_string(),
+            source: SourceKind::YouTubeMusic,
+            kind: CollectionKind::Playlist,
+            title: "Song radio".to_string(),
+            subtitle: String::new(),
+            thumbnail_url: None,
+        };
+        for c in collections.into_iter().chain([radio]) {
+            let t = Instant::now();
+            let tracks = yt.collection(c.clone()).await.expect("collection");
+            println!(
+                "open {:?} '{}' [{}]: {:?}, {} tracks; first: {:?}",
+                c.kind,
+                c.title,
+                c.id,
+                t.elapsed(),
+                tracks.len(),
+                tracks
+                    .first()
+                    .map(|t| (t.kind, &t.title, &t.artist, t.duration_secs))
+            );
+            assert!(!tracks.is_empty());
+        }
+    });
+    let _ = std::fs::remove_dir_all(&config);
 }
 
 #[test]

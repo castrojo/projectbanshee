@@ -149,3 +149,43 @@ fn large_artwork_is_downscaled_when_decoded() {
             <= (banshee::artwork::MAX_DECODE_PX * banshee::artwork::MAX_DECODE_PX * 4) as usize
     );
 }
+
+fn solid(px: i32, rgba: [u8; 4]) -> gdk::Texture {
+    let bytes: Vec<u8> = std::iter::repeat_n(rgba, (px * px) as usize)
+        .flatten()
+        .collect();
+    gdk::MemoryTexture::new(
+        px,
+        px,
+        gdk::MemoryFormat::R8g8b8a8,
+        &glib::Bytes::from_owned(bytes),
+        (px * 4) as usize,
+    )
+    .into()
+}
+
+fn contrast_with_white((r, g, b): (u8, u8, u8)) -> f64 {
+    let c = |v: u8| {
+        let v = f64::from(v) / 255.0;
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let l = 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b);
+    1.05 / (l + 0.05)
+}
+
+#[test]
+fn accent_follows_the_artworks_hue_and_keeps_white_text_readable() {
+    let (r, g, b) = banshee::artwork::dominant_color(&solid(64, [230, 40, 40, 255]));
+    assert!(r > g * 2 && r > b * 2, "expected red, got {r},{g},{b}");
+    // A pale yellow cover must be darkened enough for white text on the play button.
+    let yellow = banshee::artwork::dominant_color(&solid(64, [250, 240, 120, 255]));
+    assert!(contrast_with_white(yellow) >= 4.5, "{yellow:?}");
+    assert!(
+        yellow.0 > yellow.2 && yellow.1 > yellow.2,
+        "still yellowish: {yellow:?}"
+    );
+}

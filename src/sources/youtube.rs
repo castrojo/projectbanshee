@@ -6,8 +6,8 @@
 //! built lazily once and reused, so a warm search is a single HTTPS round trip.
 
 use crate::model::{
-    Collection, CollectionKind, LibrarySection, MediaKind, Playable, SearchFilter, SearchItem,
-    SourceKind, Track, parse_duration,
+    Collection, CollectionKind, HomeShelf, LibrarySection, MediaKind, Playable, SearchFilter,
+    SearchItem, SourceKind, Track, parse_duration,
 };
 use crate::sources::cookies::{self, ErrorLinePick, PrivateTemp};
 use crate::sources::{AudioSource, Resolved, SourceError, SourceResult};
@@ -15,6 +15,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
 use serde::Deserialize;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::process::Stdio;
@@ -29,13 +30,14 @@ use ytmapi_rs::common::{
 };
 use ytmapi_rs::continuations::ParseFromContinuable;
 use ytmapi_rs::error::ErrorKind;
+use ytmapi_rs::parse::{ParseFrom, ProcessedResult};
 use ytmapi_rs::query::search::{
     BasicSearch, EpisodesFilter, FilteredSearch, PodcastsFilter, SongsFilter, VideosFilter,
 };
 use ytmapi_rs::query::{
     GetLibraryAlbumsQuery, GetLibraryArtistSubscriptionsQuery, GetLibraryArtistsQuery,
     GetLibraryPlaylistsQuery, GetLibraryPodcastsQuery, GetNewEpisodesQuery, GetPlaylistTracksQuery,
-    GetPodcastQuery, PostQuery, Query, SearchQuery,
+    GetPodcastQuery, GetWatchPlaylistQuery, PostMethod, PostQuery, Query, SearchQuery,
 };
 use ytmapi_rs::{YtMusic, YtMusicBuilder};
 
@@ -158,6 +160,14 @@ impl YouTubeMusicSource {
     pub fn prewarm(&self) -> BoxFuture<'static, SourceResult<()>> {
         let inner = self.inner.clone();
         async move { inner.anon().await.map(|_| ()) }.boxed()
+    }
+
+    /// The YouTube Music Home feed as music.youtube.com shows it ("Quick picks", "Listen
+    /// again", mixes, new releases, podcasts, …), in page order, empty shelves skipped.
+    /// Personalised when signed in; the public feed otherwise.
+    pub fn home(&self) -> BoxFuture<'static, SourceResult<Vec<HomeShelf>>> {
+        let inner = self.inner.clone();
+        async move { inner.home().await }.boxed()
     }
 
     /// Rebuild the authenticated client from the jar (after an import or sign-out).
@@ -383,6 +393,26 @@ impl Inner {
         }
     }
 
+    async fn home(&self) -> SourceResult<Vec<HomeShelf>> {
+        if self.signed_in.load(Ordering::SeqCst) {
+            match self.auth().await {
+                Ok(yt) => {
+                    return home_feed(&*yt, true).await?.ok_or_else(|| {
+                        // Rotated cookies get a signed-out page: let the app re-import.
+                        SourceError::AuthRequired(SESSION_EXPIRED.to_string())
+                    });
+                }
+                // The jar vanished: Home works signed out too.
+                Err(_) if matches!(*self.auth.read().await, AuthSlot::Missing) => {}
+                Err(e @ SourceError::AuthRequired(_)) => return Err(e),
+                Err(e) => log::warn!("loading Home without sign-in: {e}"),
+            }
+        }
+        Ok(home_feed(self.anon().await?, false)
+            .await?
+            .unwrap_or_default())
+    }
+
     async fn library(&self) -> SourceResult<Vec<LibrarySection>> {
         if !self.signed_in.load(Ordering::SeqCst) {
             return Err(not_signed_in());
@@ -499,11 +529,11 @@ impl Inner {
             CollectionKind::Playlist => {
                 if self.signed_in.load(Ordering::SeqCst) {
                     match self.auth().await {
-                        Ok(yt) => return playlist_tracks(&*yt, &collection.id).await,
+                        Ok(yt) => return open_playlist(&*yt, &collection.id).await,
                         Err(e) => log::warn!("opening playlist without sign-in: {e}"),
                     }
                 }
-                playlist_tracks(self.anon().await?, &collection.id).await
+                open_playlist(self.anon().await?, &collection.id).await
             }
             CollectionKind::Album => {
                 let yt = self.anon().await?;
@@ -824,6 +854,38 @@ async fn playlist_tracks<A: AuthToken>(
     Ok(out)
 }
 
+/// A playlist's tracks. Radios (`RDAMVM…`, `RDEM…`, …) have no playlist page (the browse
+/// answers with no rows): they are read from their watch playlist instead.
+async fn open_playlist<A: AuthToken>(
+    yt: &YtMusic<A>,
+    playlist_id: &str,
+) -> SourceResult<Vec<Track>> {
+    let tracks = playlist_tracks(yt, playlist_id).await?;
+    if !tracks.is_empty() || !playlist_id.starts_with("RD") {
+        return Ok(tracks);
+    }
+    let query = GetWatchPlaylistQuery::new_from_playlist_id(PlaylistID::from_raw(playlist_id));
+    let tracks = timed(API_TIMEOUT, yt.query(query)).await?;
+    Ok(tracks
+        .into_iter()
+        .filter(|t| is_video_id(t.video_id.get_raw()))
+        .map(|t| {
+            let id = t.video_id.get_raw().to_string();
+            Track {
+                kind: MediaKind::Music,
+                source: SourceKind::YouTubeMusic,
+                title: t.title,
+                artist: t.author,
+                artist_id: None,
+                album: None,
+                duration_secs: parse_text_duration(&t.duration),
+                thumbnail_url: pick_thumbnail(&t.thumbnails).or_else(|| Some(video_thumbnail(&id))),
+                id,
+            }
+        })
+        .collect())
+}
+
 /// Playable rows of a playlist page or continuation, skipping greyed-out (unavailable) ones.
 /// Rows outside the playlist shelf (e.g. suggestions) are ignored.
 fn playlist_rows(json: &Value, out: &mut Vec<Track>) {
@@ -981,12 +1043,7 @@ fn collect_tiles(json: &Value, sink: &mut dyn FnMut((Group, SearchItem))) {
     match json {
         Value::Object(map) => {
             if let Some(tile) = map.get("musicTwoRowItemRenderer") {
-                let title = runs_text(runs_of(tile.get("title")));
-                let thumb = tile.get("thumbnailRenderer").and_then(json_thumbnail);
-                if let Some(endpoint) = tile.get("navigationEndpoint")
-                    && let Some(item) =
-                        classify(endpoint, title, runs_of(tile.get("subtitle")), thumb)
-                {
+                if let Some(item) = parse_tile(tile) {
                     sink(item);
                 }
             } else if let Some(row) = map.get("musicResponsiveListItemRenderer") {
@@ -1000,6 +1057,243 @@ fn collect_tiles(json: &Value, sink: &mut dyn FnMut((Group, SearchItem))) {
         Value::Array(items) => items.iter().for_each(|v| collect_tiles(v, sink)),
         _ => {}
     }
+}
+
+/// Grid / carousel tile (`musicTwoRowItemRenderer`).
+fn parse_tile(tile: &Value) -> Option<(Group, SearchItem)> {
+    let title = runs_text(runs_of(tile.get("title")));
+    let thumb = tile.get("thumbnailRenderer").and_then(json_thumbnail);
+    classify(
+        tile.get("navigationEndpoint")?,
+        title,
+        runs_of(tile.get("subtitle")),
+        thumb,
+    )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Home
+//
+// ytmapi-rs 0.3 has no Home query: `HomeQuery` / `HomeContinuation` send the `FEmusic_home`
+// browse and its continuations, and the raw JSON is read by the tolerant tile/row parsers.
+
+const HOME_BROWSE_ID: &str = "FEmusic_home";
+/// Pages fetched at most (first page + continuations, ~3 shelves each).
+const HOME_PAGES: usize = 4;
+const HOME_SHELVES: usize = 12;
+
+struct HomeQuery;
+
+struct HomeContinuation<'a> {
+    token: &'a str,
+}
+
+/// Output of raw-only queries: Banshee reads the JSON itself.
+#[derive(Debug)]
+struct RawJson;
+
+impl ParseFrom<HomeQuery> for RawJson {
+    fn parse_from(_: ProcessedResult<HomeQuery>) -> ytmapi_rs::Result<Self> {
+        Ok(RawJson)
+    }
+}
+
+impl ParseFrom<HomeContinuation<'_>> for RawJson {
+    fn parse_from(_: ProcessedResult<HomeContinuation<'_>>) -> ytmapi_rs::Result<Self> {
+        Ok(RawJson)
+    }
+}
+
+fn home_body() -> serde_json::Map<String, Value> {
+    serde_json::Map::from_iter([("browseId".to_string(), Value::from(HOME_BROWSE_ID))])
+}
+
+impl<A: AuthToken> Query<A> for HomeQuery {
+    type Output = RawJson;
+    type Method = PostMethod;
+}
+
+impl PostQuery for HomeQuery {
+    fn header(&self) -> serde_json::Map<String, Value> {
+        home_body()
+    }
+    fn params(&self) -> Vec<(&str, Cow<'_, str>)> {
+        Vec::new()
+    }
+    fn path(&self) -> &str {
+        "browse"
+    }
+}
+
+impl<A: AuthToken> Query<A> for HomeContinuation<'_> {
+    type Output = RawJson;
+    type Method = PostMethod;
+}
+
+impl PostQuery for HomeContinuation<'_> {
+    fn header(&self) -> serde_json::Map<String, Value> {
+        home_body()
+    }
+    fn params(&self) -> Vec<(&str, Cow<'_, str>)> {
+        vec![
+            ("ctoken", self.token.into()),
+            ("continuation", self.token.into()),
+            ("type", "next".into()),
+        ]
+    }
+    fn path(&self) -> &str {
+        "browse"
+    }
+}
+
+/// Home shelves: the first page plus continuations while under `HOME_PAGES` / `HOME_SHELVES`.
+/// `Ok(None)` when a `signed_in` caller was served a signed-out page. A failing continuation
+/// truncates the feed (logged); a failing first page is an error.
+async fn home_feed<A: AuthToken>(
+    yt: &YtMusic<A>,
+    signed_in: bool,
+) -> SourceResult<Option<Vec<HomeShelf>>> {
+    let first = raw_page(yt, HomeQuery).await?;
+    if signed_in && reports_logged_out(&first) {
+        return Ok(None);
+    }
+    let mut shelves = Vec::new();
+    let mut token = home_page(&first, &mut shelves);
+    let mut pages = 1;
+    while pages < HOME_PAGES && shelves.len() < HOME_SHELVES {
+        let Some(current) = token.take() else { break };
+        pages += 1;
+        match raw_page(yt, HomeContinuation { token: &current }).await {
+            Ok(json) => token = home_page(&json, &mut shelves),
+            Err(e) => {
+                log::warn!("YouTube Music Home continuation failed, feed truncated: {e}");
+                break;
+            }
+        }
+    }
+    shelves.truncate(HOME_SHELVES);
+    Ok(Some(shelves))
+}
+
+/// Non-empty shelves of one Home page (first page or continuation) appended to `out`;
+/// returns the next continuation token.
+fn home_page(json: &Value, out: &mut Vec<HomeShelf>) -> Option<String> {
+    let list = json
+        .pointer("/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer")
+        .or_else(|| json.pointer("/continuationContents/sectionListContinuation"))?;
+    let mut token = list
+        .pointer("/continuations/0/nextContinuationData/continuation")
+        .and_then(Value::as_str);
+    for section in list
+        .get("contents")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(next) = section
+            .pointer("/continuationItemRenderer/continuationEndpoint/continuationCommand/token")
+            .and_then(Value::as_str)
+        {
+            token = Some(next);
+        } else if let Some(shelf) = section
+            .get("musicCarouselShelfRenderer")
+            .or_else(|| section.get("musicImmersiveCarouselShelfRenderer"))
+        {
+            out.extend(home_shelf(shelf));
+        }
+    }
+    token.map(str::to_string)
+}
+
+/// One carousel: header title (+ strapline) and its playable / openable items, deduplicated.
+/// `None` for untitled or empty shelves.
+fn home_shelf(shelf: &Value) -> Option<HomeShelf> {
+    let header = shelf.get("header")?.as_object()?.values().next()?;
+    let title = runs_text(runs_of(header.get("title")));
+    if title.is_empty() {
+        return None;
+    }
+    let strapline = Some(runs_text(runs_of(header.get("strapline")))).filter(|s| !s.is_empty());
+    let mut seen = HashSet::new();
+    let items: Vec<SearchItem> = shelf
+        .get("contents")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(home_item)
+        .filter(|item| {
+            seen.insert(match item {
+                SearchItem::Track(t) => t.key(),
+                SearchItem::Collection(c) => c.key(),
+            })
+        })
+        .collect();
+    (!items.is_empty()).then_some(HomeShelf {
+        title,
+        strapline,
+        items,
+    })
+}
+
+fn home_item(entry: &Value) -> Option<SearchItem> {
+    if let Some(tile) = entry.get("musicTwoRowItemRenderer") {
+        parse_tile(tile)
+            .map(|(_, item)| item)
+            .or_else(|| watch_playlist_tile(tile))
+    } else if let Some(row) = entry.get("musicResponsiveListItemRenderer") {
+        let (_, mut item) = parse_list_item(row)?;
+        // Home rows ("Quick picks") read `Artist • 36M plays` with the album in a third column.
+        if let SearchItem::Track(track) = &mut item
+            && track.album.is_none()
+        {
+            let album = row
+                .pointer("/flexColumns/2/musicResponsiveListItemFlexColumnRenderer/text")
+                .map(|t| runs_of(Some(t)))
+                .unwrap_or_default();
+            let links_album = album.iter().any(|r| {
+                r.get("navigationEndpoint")
+                    .and_then(browse_target)
+                    .is_some_and(|(_, page)| page == "MUSIC_PAGE_TYPE_ALBUM")
+            });
+            if links_album {
+                track.album = Some(runs_text(album)).filter(|a| !a.is_empty());
+            }
+        }
+        Some(item)
+    } else if entry.get("musicMultiRowListItemRenderer").is_some() {
+        episode_rows(entry, "", "", None)
+            .into_iter()
+            .next()
+            .map(SearchItem::Track)
+    } else {
+        None
+    }
+}
+
+/// Radio / mix tile that only starts playback (`watchPlaylistEndpoint`): a Playlist opened
+/// through its watch playlist (see `open_playlist`).
+fn watch_playlist_tile(tile: &Value) -> Option<SearchItem> {
+    let id = tile
+        .pointer("/navigationEndpoint/watchPlaylistEndpoint/playlistId")
+        .and_then(Value::as_str)?;
+    let title = runs_text(runs_of(tile.get("title")));
+    if title.is_empty() {
+        return None;
+    }
+    let parts = segments(runs_of(tile.get("subtitle")));
+    let texts: Vec<String> = parts.iter().map(|s| runs_text(s)).collect();
+    let mut detail: Vec<&str> = texts.iter().map(String::as_str).collect();
+    if !parts.first().is_some_and(|s| is_type_label(s)) {
+        detail.insert(0, "Playlist");
+    }
+    Some(SearchItem::Collection(Collection {
+        id: normalize_playlist_id(id).to_string(),
+        source: SourceKind::YouTubeMusic,
+        kind: CollectionKind::Playlist,
+        title,
+        subtitle: subtitle(&detail),
+        thumbnail_url: tile.get("thumbnailRenderer").and_then(json_thumbnail),
+    }))
 }
 
 fn not_signed_in() -> SourceError {
@@ -1939,5 +2233,181 @@ mod tests {
             parse_ytdlp_json(b"{}", false),
             Err(SourceError::Extraction(_))
         ));
+    }
+
+    /// Trimmed from a real `FEmusic_home` first page.
+    const HOME_FIRST_PAGE: &str = r#"{
+      "responseContext": { "serviceTrackingParams": [ { "service": "GFEEDBACK", "params": [
+        { "key": "browse_id", "value": "FEmusic_home" }, { "key": "logged_in", "value": "0" } ] } ] },
+      "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [ { "tabRenderer": { "content": {
+        "sectionListRenderer": {
+          "contents": [
+            { "musicCarouselShelfRenderer": {
+              "header": { "musicCarouselShelfBasicHeaderRenderer": {
+                "title": { "runs": [ { "text": "Quick picks" } ] },
+                "strapline": { "runs": [ { "text": "START RADIO FROM A SONG" } ] },
+                "headerStyle": "MUSIC_CAROUSEL_SHELF_BASIC_HEADER_STYLE_DEFAULT" } },
+              "contents": [
+                { "musicResponsiveListItemRenderer": {
+                  "thumbnail": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [
+                    { "url": "https://lh3/small", "width": 60, "height": 60 },
+                    { "url": "https://lh3/fit", "width": 120, "height": 120 } ] } } },
+                  "overlay": { "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
+                    "playNavigationEndpoint": { "watchEndpoint": { "videoId": "CLSuAhT71yU",
+                      "playlistId": "RDAMVMCLSuAhT71yU", "params": "wAEB",
+                      "watchEndpointMusicSupportedConfigs": { "watchEndpointMusicConfig": {
+                        "musicVideoType": "MUSIC_VIDEO_TYPE_ATV" } } } } } } } },
+                  "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                      { "text": "Karma Police", "navigationEndpoint": { "watchEndpoint": { "videoId": "CLSuAhT71yU" } } } ] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                      { "text": "Radiohead", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCq19-LqvG35A-30oyAiPiqA",
+                        "browseEndpointContextSupportedConfigs": { "browseEndpointContextMusicConfig": {
+                          "pageType": "MUSIC_PAGE_TYPE_ARTIST" } } } } },
+                      { "text": " • " },
+                      { "text": "36M plays" } ] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                      { "text": "OK Computer", "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREb_okc",
+                        "browseEndpointContextSupportedConfigs": { "browseEndpointContextMusicConfig": {
+                          "pageType": "MUSIC_PAGE_TYPE_ALBUM" } } } } } ] } } } ] } },
+                { "musicResponsiveListItemRenderer": {
+                  "overlay": { "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
+                    "playNavigationEndpoint": { "watchEndpoint": { "videoId": "CLSuAhT71yU",
+                      "watchEndpointMusicSupportedConfigs": { "watchEndpointMusicConfig": {
+                        "musicVideoType": "MUSIC_VIDEO_TYPE_ATV" } } } } } } } },
+                  "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [ { "text": "Karma Police" } ] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [ { "text": "Radiohead" } ] } } } ] } } ] } },
+            { "musicTastebuilderShelfRenderer": {} },
+            { "musicCarouselShelfRenderer": {
+              "header": { "musicCarouselShelfBasicHeaderRenderer": {
+                "title": { "runs": [ { "text": "Recommended albums" } ] } } },
+              "contents": [
+                { "musicTwoRowItemRenderer": {
+                  "thumbnailRenderer": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [
+                    { "url": "https://lh3/album", "width": 226, "height": 226 } ] } } },
+                  "title": { "runs": [ { "text": "In Rainbows" } ] },
+                  "subtitle": { "runs": [ { "text": "Album" }, { "text": " • " }, { "text": "Radiohead" } ] },
+                  "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREb_inr",
+                    "browseEndpointContextSupportedConfigs": { "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ALBUM" } } } } } },
+                { "musicTwoRowItemRenderer": {
+                  "title": { "runs": [ { "text": "Throwback Jams" } ] },
+                  "subtitle": { "runs": [ { "text": "Michael Jackson, Prince, Madonna" } ] },
+                  "navigationEndpoint": { "browseEndpoint": { "browseId": "VLRDCLAK5uy_throwback",
+                    "browseEndpointContextSupportedConfigs": { "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_PLAYLIST" } } } } } },
+                { "musicTwoRowItemRenderer": {
+                  "title": { "runs": [ { "text": "My Supermix" } ] },
+                  "subtitle": { "runs": [ { "text": "Radiohead, Muse" } ] },
+                  "navigationEndpoint": { "watchPlaylistEndpoint": { "playlistId": "RDTMAK5uy_supermix" } } } } ] } },
+            { "musicCarouselShelfRenderer": {
+              "header": { "musicCarouselShelfBasicHeaderRenderer": {
+                "title": { "runs": [ { "text": "Nothing playable" } ] } } },
+              "contents": [ { "musicTwoRowItemRenderer": { "title": { "runs": [ { "text": "No endpoint" } ] } } } ] } }
+          ],
+          "continuations": [ { "nextContinuationData": { "continuation": "TOKEN-2" } } ]
+        } } } } ] } }
+    }"#;
+
+    /// Trimmed from a real `FEmusic_home` continuation (the last one: no further token).
+    const HOME_CONTINUATION: &str = r#"{
+      "continuationContents": { "sectionListContinuation": { "contents": [
+        { "musicCarouselShelfRenderer": {
+          "header": { "musicCarouselShelfBasicHeaderRenderer": {
+            "title": { "runs": [ { "text": "Podcasts to get you started" } ] } } },
+          "contents": [
+            { "musicTwoRowItemRenderer": {
+              "title": { "runs": [ { "text": "New Heights" } ] },
+              "subtitle": { "runs": [ { "text": "Jason Kelce & Travis Kelce" } ] },
+              "navigationEndpoint": { "browseEndpoint": { "browseId": "MPSPPLnewheights",
+                "browseEndpointContextSupportedConfigs": { "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE" } } } } } },
+            { "musicMultiRowListItemRenderer": {
+              "title": { "runs": [ { "text": "Episode 1", "navigationEndpoint": { "browseEndpoint": {
+                "browseId": "MPEDabcdefghijk",
+                "browseEndpointContextSupportedConfigs": { "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_TRACK_PAGE" } } } } } ] },
+              "secondTitle": { "runs": [ { "text": "New Heights" } ] } } } ] } } ] } }
+    }"#;
+
+    #[test]
+    fn home_page_maps_carousels_to_shelves_and_follows_continuations() {
+        let first: Value = serde_json::from_str(HOME_FIRST_PAGE).expect("fixture");
+        let mut shelves = Vec::new();
+        assert_eq!(home_page(&first, &mut shelves).as_deref(), Some("TOKEN-2"));
+        let titles: Vec<&str> = shelves.iter().map(|s| s.title.as_str()).collect();
+        assert_eq!(titles, ["Quick picks", "Recommended albums"]);
+
+        let picks = &shelves[0];
+        assert_eq!(picks.strapline.as_deref(), Some("START RADIO FROM A SONG"));
+        let [SearchItem::Track(song)] = picks.items.as_slice() else {
+            panic!("one deduplicated song: {:?}", picks.items);
+        };
+        assert_eq!(
+            (
+                song.id.as_str(),
+                song.kind,
+                song.title.as_str(),
+                song.artist.as_str()
+            ),
+            ("CLSuAhT71yU", MediaKind::Music, "Karma Police", "Radiohead")
+        );
+        assert_eq!(song.album.as_deref(), Some("OK Computer"));
+        assert_eq!(song.artist_id.as_deref(), Some("UCq19-LqvG35A-30oyAiPiqA"));
+        assert_eq!(song.duration_secs, None, "play counts are not durations");
+        assert_eq!(song.thumbnail_url.as_deref(), Some("https://lh3/fit"));
+
+        let albums = &shelves[1];
+        assert_eq!(albums.strapline, None);
+        let collections: Vec<(&str, CollectionKind, &str)> = albums
+            .items
+            .iter()
+            .map(|i| match i {
+                SearchItem::Collection(c) => (c.id.as_str(), c.kind, c.title.as_str()),
+                SearchItem::Track(t) => panic!("unexpected track {t:?}"),
+            })
+            .collect();
+        assert_eq!(
+            collections,
+            [
+                ("MPREb_inr", CollectionKind::Album, "In Rainbows"),
+                (
+                    "RDCLAK5uy_throwback",
+                    CollectionKind::Playlist,
+                    "Throwback Jams"
+                ),
+                (
+                    "RDTMAK5uy_supermix",
+                    CollectionKind::Playlist,
+                    "My Supermix"
+                ),
+            ]
+        );
+        // Playlist ids open through the regular playlist browse.
+        assert_eq!(
+            playlist_browse_id(collections[1].0),
+            "VLRDCLAK5uy_throwback"
+        );
+
+        let next: Value = serde_json::from_str(HOME_CONTINUATION).expect("fixture");
+        assert_eq!(home_page(&next, &mut shelves), None);
+        let podcasts = &shelves[2];
+        assert_eq!(podcasts.title, "Podcasts to get you started");
+        assert!(matches!(&podcasts.items[0],
+            SearchItem::Collection(c) if c.kind == CollectionKind::Podcast && c.id == "MPSPPLnewheights"));
+        assert!(matches!(&podcasts.items[1],
+            SearchItem::Track(t) if t.kind == MediaKind::Episode && t.id == "abcdefghijk" && t.artist == "New Heights"));
+    }
+
+    #[test]
+    fn home_page_reads_continuation_item_tokens_and_rejects_other_pages() {
+        let json = serde_json::json!({ "continuationContents": { "sectionListContinuation": {
+            "contents": [ { "continuationItemRenderer": { "continuationEndpoint": {
+                "continuationCommand": { "token": "TOKEN-3" } } } } ] } } });
+        let mut shelves = Vec::new();
+        assert_eq!(home_page(&json, &mut shelves).as_deref(), Some("TOKEN-3"));
+        assert!(shelves.is_empty());
+        assert_eq!(home_page(&serde_json::json!({}), &mut shelves), None);
     }
 }

@@ -92,6 +92,77 @@ pub fn present(ctl: &Rc<Controller>, parent: &impl IsA<gtk::Widget>) {
     sp.add(&sp_out);
     page.add(&sp);
 
+    // ---------------- Discord
+    let dc = adw::PreferencesGroup::builder()
+        .title("Discord")
+        .description("Show the song, artist and artwork you're playing as your Discord status.")
+        .build();
+    let dc_on = adw::SwitchRow::builder()
+        .title("Show What I'm Playing")
+        .active(ctl.prefs.borrow().discord_presence)
+        .build();
+    let dc_id = adw::EntryRow::builder()
+        .title("Discord Application ID")
+        .text(
+            ctl.prefs
+                .borrow()
+                .discord_client_id
+                .clone()
+                .unwrap_or_default(),
+        )
+        .show_apply_button(true)
+        .input_purpose(gtk::InputPurpose::Digits)
+        .build();
+    let dc_help = adw::ActionRow::builder()
+        .title("Create an Application ID")
+        .subtitle("Discord only shows statuses from registered applications. Create one named “Project Banshee” and paste its Application ID above.")
+        .activatable(true)
+        .build();
+    dc_help.add_suffix(&gtk::Image::from_icon_name("adw-external-link-symbolic"));
+    let dc_status = adw::ActionRow::builder().title("Status").build();
+    dc.add(&dc_on);
+    dc.add(&dc_id);
+    dc.add(&dc_status);
+    dc.add(&dc_help);
+    page.add(&dc);
+    {
+        let ctl = ctl.clone();
+        dc_help.connect_activated(move |_| {
+            crate::ui::open_uri(&ctl, "https://discord.com/developers/applications")
+        });
+    }
+    {
+        let (ctl, dc_id) = (ctl.clone(), dc_id.clone());
+        dc_on.connect_active_notify(move |r| {
+            ctl.set_discord(r.is_active(), Some(dc_id.text().to_string()))
+        });
+    }
+    {
+        let (ctl, dc_on) = (ctl.clone(), dc_on.clone());
+        dc_id
+            .connect_apply(move |e| ctl.set_discord(dc_on.is_active(), Some(e.text().to_string())));
+    }
+    {
+        use banshee::discord::PresenceStatus as S;
+        let describe = |s: &S| match s {
+            S::Off => "Off".to_string(),
+            S::NoClientId => "Add an Application ID to turn this on".to_string(),
+            S::DiscordNotRunning => "Waiting for Discord to start".to_string(),
+            S::Connecting => "Connecting to Discord…".to_string(),
+            S::Connected { user } => format!("Showing on Discord as {user}"),
+            S::Rejected(why) => format!("Discord refused: {why}"),
+        };
+        dc_status.set_subtitle(&glib::markup_escape_text(&describe(&ctl.presence.status())));
+        let rx = ctl.presence.subscribe();
+        let row = dc_status.downgrade();
+        glib::spawn_future_local(async move {
+            while let Ok(s) = rx.recv().await {
+                let Some(row) = row.upgrade() else { break };
+                row.set_subtitle(&glib::markup_escape_text(&describe(&s)));
+            }
+        });
+    }
+
     let refresh: Rc<dyn Fn()> = {
         let (ctl, status, yt_out, sp_status, sp_in, sp_out) = (
             ctl.clone(),

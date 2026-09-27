@@ -16,6 +16,8 @@ finish-args:
   - --device=dri
   - --own-name=org.mpris.MediaPlayer2.banshee
   - --talk-name=org.freedesktop.secrets
+  # Discord Rich Presence: the Discord Flatpak's IPC socket.
+  - --filesystem=xdg-run/app/com.discordapp.Discord
   # Restrict imports to Flatpak browser profile stores, not entire browser sandboxes.
   - --filesystem=~/.var/app/org.mozilla.firefox/config/mozilla/firefox:ro
   - --filesystem=~/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser:ro

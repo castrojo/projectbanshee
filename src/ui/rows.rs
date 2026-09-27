@@ -115,6 +115,8 @@ pub enum RowItem {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RowMode {
     Result,
+    /// A search result in Mini Mode's quick-add: just artwork, text and `+`.
+    QuickAdd,
     Queue,
 }
 
@@ -215,7 +217,7 @@ impl ItemRow {
         row.append(&badge);
 
         let (icon, tip) = match mode {
-            RowMode::Result => ("list-add-symbolic", "Add to Queue"),
+            RowMode::Result | RowMode::QuickAdd => ("list-add-symbolic", "Add to Queue"),
             RowMode::Queue => ("list-remove-symbolic", "Remove from Queue"),
         };
         let primary = gtk::Button::builder()
@@ -235,6 +237,7 @@ impl ItemRow {
             .build();
         menu.add_css_class("flat");
         menu.add_css_class("circular");
+        menu.set_visible(mode != RowMode::QuickAdd);
         row.append(&menu);
 
         // Row-local actions used by the menu; they read whatever item is bound now.
@@ -312,7 +315,7 @@ impl ItemRow {
 
         let model = gio::Menu::new();
         match mode {
-            RowMode::Result => {
+            RowMode::Result | RowMode::QuickAdd => {
                 model.append(Some("Play Now"), Some("row.play-now"));
                 model.append(Some("Play Next"), Some("row.play-next"));
             }
@@ -402,7 +405,7 @@ impl ItemRow {
             b.set_label(source_badge(source));
             b.set_css_classes(&["source-badge", source.slug()]);
             // The queue sidebar is narrow: the source goes into the subtitle instead.
-            b.set_visible(imp.mode.get() != Some(RowMode::Queue));
+            b.set_visible(imp.mode.get() == Some(RowMode::Result));
         }
         if let Some(p) = imp.playing.borrow().as_ref() {
             p.set_visible(is_current);

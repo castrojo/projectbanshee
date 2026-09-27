@@ -11,8 +11,6 @@ use gtk::{gio, glib};
 use std::cell::Cell;
 use std::rc::Rc;
 
-const MINI_SIZE: (i32, i32) = (520, 96);
-
 pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWindow {
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -24,7 +22,8 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         .height_request(96)
         .build();
 
-    let search = SearchPage::new(ctl);
+    let search = SearchPage::new(ctl, false);
+    let mini_player = crate::ui::mini::MiniPlayer::new(ctl);
     let library = LibraryView::new(ctl);
     let queue = QueuePanel::new(ctl, &window);
     let now = NowPlaying::new(ctl);
@@ -138,17 +137,6 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         split.connect_collapsed_notify(move |_| s());
     }
 
-    // Mini Mode: exit button + drag handle around the Now Playing Bar.
-    let exit_mini = gtk::Button::builder()
-        .icon_name("view-fullscreen-symbolic")
-        .tooltip_text("Leave Mini Mode")
-        .valign(gtk::Align::Center)
-        .visible(false)
-        .action_name("win.mini-mode")
-        .build();
-    exit_mini.add_css_class("flat");
-    exit_mini.add_css_class("circular");
-    now.root.append(&exit_mini);
     let bar_handle = gtk::WindowHandle::builder().child(&now.root).build();
 
     // Toasts float above the content, never over the Now Playing Bar.
@@ -305,10 +293,22 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         );
     }
     {
-        let (search, stack) = (search.clone(), stack.clone());
+        let (search, stack, mini_player, w) = (
+            search.clone(),
+            stack.clone(),
+            mini_player.clone(),
+            window.downgrade(),
+        );
         add(
             "focus-search",
             Box::new(move || {
+                // In Mini Mode, search means the quick-add under the capsule.
+                if w.upgrade()
+                    .is_some_and(|w| w.content().is_some_and(|c| c == mini_player.root))
+                {
+                    mini_player.open_quick_add();
+                    return;
+                }
                 stack.set_visible_child_name("search");
                 search.focus();
             }),
@@ -341,19 +341,6 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         add("previous", Box::new(move || ctl.previous()));
     }
     {
-        let (ctl, w) = (ctl.clone(), window.downgrade());
-        add(
-            "share-current",
-            Box::new(move || {
-                let (Some(w), Some(e)) = (w.upgrade(), ctl.current_entry()) else {
-                    ctl.toast(crate::app::ToastSpec::info("Nothing is playing"));
-                    return;
-                };
-                crate::ui::share_to_discord(&ctl, &w, &[e.track]);
-            }),
-        );
-    }
-    {
         let ctl = ctl.clone();
         add(
             "open-artist",
@@ -372,11 +359,10 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             let p = ctl.prefs.borrow();
             Rc::new(Cell::new((p.window_width, p.window_height)))
         };
-        let (w, outer, bar_handle, exit_mini, mini_on, sync_extras) = (
+        let (w, outer, mini_player, mini_on, sync_extras) = (
             window.downgrade(),
             outer.clone(),
-            bar_handle.clone(),
-            exit_mini.clone(),
+            mini_player.clone(),
             mini_on.clone(),
             sync_extras.clone(),
         );
@@ -385,10 +371,9 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             let Some(w) = w.upgrade() else { return };
             let on = !a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
             a.set_state(&on.to_variant());
-            exit_mini.set_visible(on);
             mini_on.set(on);
             sync_extras();
-            // Mini Mode is just the Now Playing Bar as the window content.
+            // Mini Mode swaps the whole window content for the capsule.
             if on {
                 was_maximized.set(w.is_maximized());
                 if w.is_maximized() {
@@ -396,12 +381,10 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
                 } else if w.width() > 0 && w.height() > 0 {
                     saved.set((w.width(), w.height()));
                 }
-                outer.remove(&bar_handle);
-                w.set_content(Some(&bar_handle));
-                w.set_default_size(MINI_SIZE.0, MINI_SIZE.1);
+                w.set_content(Some(&mini_player.root));
+                w.set_default_size(crate::ui::mini::WIDTH, crate::ui::mini::COLLAPSED_HEIGHT);
             } else {
-                w.set_content(None::<&gtk::Widget>);
-                outer.add_bottom_bar(&bar_handle);
+                mini_player.collapse();
                 w.set_content(Some(&outer));
                 let (sw, sh) = saved.get();
                 w.set_default_size(sw.max(640), sh.max(480));
@@ -468,7 +451,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         window.connect_map(move |_| search.focus());
     }
     // Keep the search page's Rc alive with the window.
-    let keep = (search, library, queue, now);
+    let keep = (search, library, queue, now, mini_player);
     window.connect_destroy(move |_| {
         let _ = &keep;
     });

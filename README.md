@@ -15,6 +15,7 @@ The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 
 ## Use
 
+- **Home** is the empty Search page: your recent searches as chips, then YouTube Music's shelves (Quick picks, mixes, albums, podcasts). Tap a song to queue it, tap a playlist or album to open it, or use `+` on any card.
 - **Search** is focused when the window opens. Results appear as you type: matches from everything you have seen before show at once, and YouTube Music (and Spotify, if signed in) results merge in a moment later, ranked by fuzzy match. A spinner beside the entry shows when results are still coming.
 - **Enter** adds the highlighted result to the queue and selects the text, so the next word you type starts the next search. **Shift+Enter** plays it next, **Ctrl+Enter** plays it now, **Up/Down** move the highlight. Every row also has `+`.
 - **Filters**: All, Music, Videos, Podcasts.
@@ -22,8 +23,8 @@ The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 - **Queue** is the sidebar (F9 toggles it). Drag rows to reorder, use `−` to remove (with Undo), activate a row to play it. Shuffle and repeat are in the Now Playing Bar.
 - **Library** shows your YouTube Music and Spotify playlists, liked songs, albums, artists and podcasts. Open one to browse it or use `+` to queue all of it. Library data is cached and refreshed in the background.
 - **Now Playing Bar**: click the artwork to open the artist on YouTube Music. Videos also show in the Video tab.
-- **Mini Mode** (Ctrl+M) shrinks the window to just the Now Playing Bar.
-- **Share to Discord** (Now Playing menu, or Queue menu for the whole queue) copies the links and opens the Discord Flatpak so you can paste them.
+- **Mini Mode** (Ctrl+M or the button in the Now Playing Bar) turns the window into a capsule lit by the cover art: track, Up next, transport and a seek line. Press `+` or Ctrl+F in it to search and queue without leaving Mini Mode; Escape closes the search.
+- **Discord**: turn on **Accounts → Discord → Show What I'm Playing** and Discord shows the song, artist and artwork as your status. Discord only accepts this from a registered application: create one named "Project Banshee" at <https://discord.com/developers/applications> and paste its Application ID there.
 - **MPRIS**: GNOME Shell, media keys and `playerctl` control playback. `playerctl open <YouTube or Spotify link>` queues it.
 
 ### What Banshee remembers
@@ -50,7 +51,7 @@ Open **Menu → Accounts** (Ctrl+,).
 - YouTube's web API and stream extraction are unofficial and can change; update the Flatpak when searches or playback break. The Flatpak bundles pinned `yt-dlp`, its EJS challenge scripts and Deno.
 - Videos play at 360p: YouTube no longer offers higher-resolution single-file streams without a proof-of-origin token.
 - Spotify playback requires Premium; Spotify has removed some Web API endpoints (artist top tracks falls back to search).
-- Discord sharing copies links; Discord Rich Presence is not implemented (it needs a registered Discord application).
+- Discord status needs a Discord application ID you create once (see Use).
 
 ## Build from source
 

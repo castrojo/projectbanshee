@@ -1,16 +1,19 @@
 //! GTK/libadwaita user interface.
 
 pub mod accounts;
+pub mod home;
 pub mod library;
+pub mod mini;
 pub mod now_playing;
+pub mod player_widgets;
 pub mod queue_panel;
 pub mod rows;
 pub mod search;
 pub mod window;
 
-use crate::app::{Controller, ToastSpec};
+use crate::app::Controller;
 use adw::prelude::*;
-use banshee::model::{Collection, CollectionKind, SourceKind, Track};
+use banshee::model::{Collection, CollectionKind, SourceKind};
 use gtk::glib;
 use std::rc::Rc;
 
@@ -55,22 +58,6 @@ pub fn collection_url(c: &Collection) -> String {
     }
 }
 
-/// Share to Discord (ADR 0009).
-pub fn share_to_discord(ctl: &Rc<Controller>, win: &impl IsA<gtk::Window>, tracks: &[Track]) {
-    let msg = banshee::discord::share_message(tracks);
-    let Some(display) = gtk::gdk::Display::default() else {
-        ctl.toast_error("No display available for the clipboard");
-        return;
-    };
-    let (ctl, win) = (ctl.clone(), win.clone().upcast::<gtk::Window>());
-    glib::spawn_future_local(async move {
-        match banshee::discord::share(&display, Some(&win), &msg).await {
-            Ok(()) => ctl.toast(ToastSpec::info("Links copied — paste them in Discord")),
-            Err(e) => ctl.toast_error(e),
-        }
-    });
-}
-
 pub fn load_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("style.css"));
@@ -81,4 +68,23 @@ pub fn load_css() {
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
     }
+}
+
+thread_local! {
+    static ACCENT: gtk::CssProvider = {
+        let p = gtk::CssProvider::new();
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(&display, &p, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+        }
+        p
+    };
+}
+
+/// Tint the play button and Mini Mode with a colour taken from the current artwork.
+pub fn set_accent((r, g, b): (u8, u8, u8)) {
+    ACCENT.with(|p| {
+        p.load_from_string(&format!(
+            ".banshee-accent {{ --accent-bg-color: rgb({r},{g},{b}); --banshee-art: rgb({r},{g},{b}); }}"
+        ))
+    });
 }

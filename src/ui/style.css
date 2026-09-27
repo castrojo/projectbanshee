@@ -61,3 +61,172 @@
 .video-view {
   background-color: black;
 }
+
+/* ---- Now Playing Bar ---- */
+.now-playing-bar .track-title {
+  font-weight: 700;
+}
+
+.now-playing-bar .track-artist,
+.now-playing-bar .up-next {
+  opacity: 0.7;
+}
+
+/* The play button takes its colour from the artwork (see ui::set_accent). */
+.banshee-accent .play-button {
+  background-color: var(--accent-bg-color);
+  color: white;
+}
+
+/* ---- Home ---- */
+.home-card {
+  padding: 6px;
+  border-radius: 12px;
+}
+
+.home-card .artwork {
+  border-radius: 10px;
+}
+
+.home-card .artwork.round {
+  border-radius: 9999px;
+}
+
+.home-card .card-title {
+  font-weight: 600;
+}
+
+.home-card .card-add {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.home-card:hover .card-add,
+.home-card:focus-within .card-add {
+  opacity: 1;
+}
+
+.chip {
+  border-radius: 9999px;
+  background-color: alpha(currentColor, 0.08);
+}
+
+.chip .chip-label {
+  padding: 4px 4px 4px 14px;
+  min-height: 0;
+  border-radius: 9999px;
+}
+
+.chip .chip-close {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  margin-right: 4px;
+  border-radius: 9999px;
+  -gtk-icon-size: 12px;
+}
+
+/* ---- Mini Mode: the cover lights the capsule ---- */
+.mini-capsule {
+  background-color: #1b1b1f;
+}
+
+.mini-capsule .artwork-backdrop {
+  filter: blur(26px) saturate(1.5) brightness(0.62);
+}
+
+.mini-scrim {
+  background-image: linear-gradient(to right,
+      alpha(black, 0.55) 0%,
+      alpha(black, 0.25) 55%,
+      color-mix(in srgb, var(--banshee-art, #3584e4) 45%, transparent) 100%);
+}
+
+.mini-content,
+.mini-content label,
+.mini-content button {
+  color: white;
+}
+
+.mini-content .track-title {
+  font-weight: 800;
+  font-size: 1.12em;
+}
+
+.mini-content .track-artist {
+  opacity: 0.85;
+}
+
+.mini-content .up-next {
+  opacity: 0.6;
+}
+
+.mini-content .artwork {
+  border-radius: 10px;
+  box-shadow: 0 6px 18px alpha(black, 0.45);
+}
+
+.mini-content button.flat:hover {
+  background-color: alpha(white, 0.14);
+}
+
+.mini-content .play-button {
+  background-color: white;
+  color: #1b1b1f;
+}
+
+.mini-progress {
+  margin: 0 8px 2px 8px;
+}
+
+.thin-progress trough {
+  min-height: 3px;
+  background-color: alpha(white, 0.18);
+}
+
+.thin-progress highlight {
+  min-height: 3px;
+  background-color: white;
+}
+
+.thin-progress slider {
+  min-width: 10px;
+  min-height: 10px;
+  margin: -4px;
+  background-color: white;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.mini-progress:hover .thin-progress slider {
+  opacity: 1;
+}
+
+.mini-quick-add {
+  background-color: alpha(black, 0.35);
+}
+
+.search-compact {
+  min-height: 34px;
+}
+
+.mini-quick-add listview,
+.mini-quick-add scrolledwindow,
+.mini-quick-add statuspage {
+  background: transparent;
+  color: white;
+}
+
+.mini-quick-add listview > row:selected {
+  background-color: alpha(white, 0.16);
+}
+
+.mini-quick-add entry {
+  background-color: alpha(white, 0.14);
+  color: white;
+}
+
+.mini-quick-add .source-badge {
+  background-color: alpha(white, 0.14);
+  color: white;
+}

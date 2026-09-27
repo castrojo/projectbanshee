@@ -24,7 +24,8 @@ pub struct SearchPage {
     selection: gtk::SingleSelection,
     list: gtk::ListView,
     stack: gtk::Stack,
-    recent: gtk::ListBox,
+    recent: gtk::FlowBox,
+    home: Option<Rc<crate::ui::home::HomeView>>,
     recent_box: gtk::Box,
     filters: adw::ToggleGroup,
     spinner: adw::Spinner,
@@ -65,13 +66,22 @@ fn status(icon: &str, title: &str, desc: &str) -> adw::StatusPage {
 }
 
 impl SearchPage {
-    pub fn new(ctl: &Rc<Controller>) -> Rc<Self> {
+    /// `compact`: the Mini Mode quick-add (no filters, no Home, small type).
+    pub fn new(ctl: &Rc<Controller>, compact: bool) -> Rc<Self> {
         let entry = gtk::SearchEntry::builder()
-            .placeholder_text("Search songs, videos and podcasts")
+            .placeholder_text(if compact {
+                "Add to queue…"
+            } else {
+                "Search songs, videos and podcasts"
+            })
             .search_delay(0)
             .hexpand(true)
             .build();
-        entry.add_css_class("search-hero");
+        entry.add_css_class(if compact {
+            "search-compact"
+        } else {
+            "search-hero"
+        });
         entry.update_property(&[gtk::accessible::Property::Label("Search")]);
 
         let spinner = adw::Spinner::builder()
@@ -97,12 +107,13 @@ impl SearchPage {
             filters.add(adw::Toggle::builder().name(name).label(label).build());
         }
         filters.set_active_name(Some("all"));
+        filters.set_visible(!compact);
 
         let header = gtk::Box::new(gtk::Orientation::Vertical, 12);
         header.append(&entry_row);
         header.append(&filters);
-        header.set_margin_top(24);
-        header.set_margin_bottom(12);
+        header.set_margin_top(if compact { 6 } else { 24 });
+        header.set_margin_bottom(if compact { 6 } else { 12 });
         header.set_margin_start(12);
         header.set_margin_end(12);
         let header_clamp = adw::Clamp::builder()
@@ -143,15 +154,28 @@ impl SearchPage {
             .transition_type(gtk::StackTransitionType::Crossfade)
             .vexpand(true)
             .build();
-        let empty = status(
-            "edit-find-symbolic",
-            "Build Your Queue",
-            "Type to search. Press Enter or + to add the highlighted result and keep typing to add more.",
-        );
-        let recent = gtk::ListBox::builder()
+        let empty = if compact {
+            let s = status(
+                "",
+                "",
+                "Type, then press Enter to add the top result. Keep typing to add more.",
+            );
+            s.add_css_class("compact");
+            s
+        } else {
+            status(
+                "edit-find-symbolic",
+                "Build Your Queue",
+                "Type to search. Press Enter or + to add the highlighted result and keep typing to add more.",
+            )
+        };
+        let recent = gtk::FlowBox::builder()
             .selection_mode(gtk::SelectionMode::None)
+            .column_spacing(8)
+            .row_spacing(8)
+            .max_children_per_line(12)
+            .homogeneous(false)
             .build();
-        recent.add_css_class("boxed-list");
         recent.update_property(&[gtk::accessible::Property::Label("Recent searches")]);
         let recent_title = gtk::Label::builder()
             .label("Recent Searches")
@@ -162,14 +186,27 @@ impl SearchPage {
         recent_box.append(&recent_title);
         recent_box.append(&recent);
         let recent_clamp = adw::Clamp::builder()
-            .maximum_size(520)
+            .maximum_size(if compact { 520 } else { 1100 })
             .child(&recent_box)
             .build();
-        empty.set_child(Some(&recent_clamp));
+        let home = (!compact).then(|| crate::ui::home::HomeView::new(ctl));
         let empty_scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
-            .child(&empty)
             .build();
+        match &home {
+            // Full window: the empty search is YouTube Music's Home, recent searches on top.
+            Some(h) => {
+                let body = gtk::Box::new(gtk::Orientation::Vertical, 24);
+                body.append(&recent_clamp);
+                body.append(&h.root);
+                body.set_margin_bottom(24);
+                empty_scroller.set_child(Some(&body));
+            }
+            None => {
+                empty.set_child(Some(&recent_clamp));
+                empty_scroller.set_child(Some(&empty));
+            }
+        }
         stack.add_named(&empty_scroller, Some("empty"));
         stack.add_named(&scroller, Some("results"));
         let searching = status("", "Searching…", "");
@@ -212,6 +249,7 @@ impl SearchPage {
             stack,
             recent,
             recent_box,
+            home,
             filters: filters.clone(),
             spinner,
             banner,
@@ -235,7 +273,14 @@ impl SearchPage {
                 let Some(li) = item.downcast_ref::<gtk::ListItem>() else {
                     return;
                 };
-                let row = ItemRow::new(&ctl, RowMode::Result);
+                let row = ItemRow::new(
+                    &ctl,
+                    if compact {
+                        RowMode::QuickAdd
+                    } else {
+                        RowMode::Result
+                    },
+                );
                 if let (Some(b), Some(p)) = (row.primary_button(), weak_page.upgrade()) {
                     let wp = Rc::downgrade(&p);
                     b.connect_clicked(move |_| {
@@ -386,18 +431,19 @@ impl SearchPage {
         let recent = self.ctl.history.borrow().recent.clone();
         self.recent_box.set_visible(!recent.is_empty());
         for q in recent.into_iter().take(12) {
-            let row = adw::ActionRow::builder()
-                .title(glib::markup_escape_text(&q))
-                .activatable(true)
+            // A chip: tap to search again, × to forget.
+            let label = gtk::Button::builder()
+                .label(&q)
+                .tooltip_text("Search again")
                 .build();
-            row.add_prefix(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
+            label.add_css_class("flat");
+            label.add_css_class("chip-label");
             let forget = gtk::Button::builder()
                 .icon_name("window-close-symbolic")
                 .tooltip_text("Remove from Recent Searches")
-                .valign(gtk::Align::Center)
                 .build();
             forget.add_css_class("flat");
-            forget.add_css_class("circular");
+            forget.add_css_class("chip-close");
             forget.update_property(&[gtk::accessible::Property::Label(
                 "Remove from recent searches",
             )]);
@@ -405,21 +451,28 @@ impl SearchPage {
                 let (ctl, q) = (self.ctl.clone(), q.clone());
                 forget.connect_clicked(move |_| ctl.forget_query(&q));
             }
-            row.add_suffix(&forget);
             let weak = Rc::downgrade(self);
-            row.connect_activated(move |_| {
+            label.connect_clicked(move |_| {
                 if let Some(p) = weak.upgrade() {
                     p.entry.set_text(&q);
                     p.entry.grab_focus();
                     p.entry.set_position(-1);
                 }
             });
-            self.recent.append(&row);
+            let chip = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            chip.add_css_class("chip");
+            chip.append(&label);
+            chip.append(&forget);
+            self.recent.append(&chip);
         }
     }
 
     pub fn set_open_collection(&self, f: impl Fn(Collection) + 'static) {
-        *self.open_collection.borrow_mut() = Some(Box::new(f));
+        let f: Rc<dyn Fn(Collection)> = Rc::new(f);
+        if let Some(h) = &self.home {
+            h.set_open_collection(f.clone());
+        }
+        *self.open_collection.borrow_mut() = Some(Box::new(move |c| f(c)));
     }
 
     pub fn focus(&self) {

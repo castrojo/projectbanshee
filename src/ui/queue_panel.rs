@@ -1,6 +1,6 @@
 //! Queue sidebar: always-visible, editable independently of playback (ADR 0007).
 
-use crate::app::{AppEvent, Controller, ToastSpec};
+use crate::app::{AppEvent, Controller};
 use crate::ui::rows::{ItemRow, RowItem, RowMode};
 use adw::prelude::*;
 use banshee::queue::QueueEntry;
@@ -18,7 +18,6 @@ impl QueuePanel {
         let header = adw::HeaderBar::builder().title_widget(&title).build();
 
         let menu = gio::Menu::new();
-        menu.append(Some("Share Queue to Discord"), Some("win.share-queue"));
         menu.append(Some("Clear Queue"), Some("win.clear-queue"));
         let menu_btn = gtk::MenuButton::builder()
             .icon_name("view-more-symbolic")
@@ -142,19 +141,6 @@ impl QueuePanel {
             clear.connect_activate(move |_, _| ctl.clear_queue());
         }
         window.add_action(&clear);
-        let share = gio::SimpleAction::new("share-queue", None);
-        {
-            let (ctl, win) = (ctl.clone(), window.clone());
-            share.connect_activate(move |_, _| {
-                let tracks = ctl.queue_tracks();
-                if tracks.is_empty() {
-                    ctl.toast(ToastSpec::info("The queue is empty"));
-                    return;
-                }
-                crate::ui::share_to_discord(&ctl, &win, &tracks);
-            });
-        }
-        window.add_action(&share);
 
         Rc::new(Self { root, header })
     }

@@ -28,6 +28,7 @@ use std::time::{Duration, Instant};
 
 pub const LIBRARY_TTL: Duration = Duration::from_secs(6 * 3600);
 pub const COLLECTION_TTL: Duration = Duration::from_secs(3600);
+pub const HOME_TTL: Duration = Duration::from_secs(30 * 60);
 const SEARCH_MEMO_TTL: Duration = Duration::from_secs(600);
 const RESOLVED_TTL: Duration = Duration::from_secs(45 * 60);
 const GC_INTERVAL: Duration = Duration::from_secs(60);
@@ -77,6 +78,14 @@ impl ToastSpec {
     }
 }
 
+/// Home feed as the UI sees it.
+#[derive(Clone)]
+pub enum HomeState {
+    Loading,
+    Ready(Vec<banshee::model::HomeShelf>),
+    Failed(String),
+}
+
 /// Library data for one source as the UI sees it.
 #[derive(Clone)]
 pub enum LibraryState {
@@ -100,6 +109,8 @@ pub struct Controller {
     pub spotify: Arc<SpotifySource>,
     pub cache: Option<JsonCache>,
     pub artwork: ArtworkStore,
+    /// Discord Rich Presence ("Listening to …").
+    pub presence: banshee::discord::Presence,
     local: RefCell<LocalIndex>,
     scorer: RefCell<Scorer>,
     search_memo: RefCell<WeightedLru<(SourceKind, SearchFilter, String), Vec<SearchItem>>>,
@@ -181,6 +192,7 @@ impl Controller {
             spotify: Arc::new(SpotifySource::new()),
             cache,
             artwork: ArtworkStore::new(disk, banshee::artwork::MEMORY_BUDGET, http),
+            presence: banshee::discord::Presence::new(),
             local: RefCell::new(LocalIndex::new(LOCAL_INDEX_CAP)),
             scorer: RefCell::new(Scorer::default()),
             search_memo: RefCell::new(WeightedLru::new(256).with_ttl(SEARCH_MEMO_TTL)),
@@ -214,6 +226,11 @@ impl Controller {
         this.restore_state();
         let target: Rc<dyn MprisTarget> = Rc::new(MprisBridge(Rc::downgrade(&this)));
         *this.mpris.borrow_mut() = Some(Mpris::new(target));
+        {
+            let p = this.prefs.borrow();
+            this.presence
+                .configure(p.discord_presence, p.discord_client_id.clone());
+        }
         this.start_gc();
         Ok(this)
     }
@@ -230,6 +247,9 @@ impl Controller {
         // Listeners may call back into the controller, but never subscribe while emitting.
         for l in self.listeners.borrow().iter() {
             l(&ev);
+        }
+        if matches!(ev, AppEvent::NowPlaying(_) | AppEvent::State(_)) {
+            self.push_presence();
         }
         if matches!(
             ev,
@@ -294,6 +314,13 @@ impl Controller {
     pub fn current_index(&self) -> Option<usize> {
         self.queue.borrow().current_index()
     }
+    /// What plays after the current entry finishes (for "Up next").
+    pub fn up_next(&self) -> Option<QueueEntry> {
+        let q = self.queue.borrow();
+        let next = q.peek_next(Advance::Finished)?;
+        (q.current().map(|c| c.id) != Some(next.id)).then(|| next.clone())
+    }
+
     pub fn repeat(&self) -> RepeatMode {
         self.queue.borrow().repeat()
     }
@@ -933,8 +960,47 @@ impl Controller {
         });
     }
 
+    /// Tell Discord what is playing now (or nothing).
+    fn push_presence(&self) {
+        let now = self.current_entry().map(|e| {
+            let playing = matches!(
+                self.player.state(),
+                PlaybackState::Playing | PlaybackState::Buffering(_) | PlaybackState::Loading
+            );
+            banshee::discord::NowPlaying {
+                url: e.track.web_url(),
+                title: e.track.title,
+                artist: e.track.artist,
+                album: e.track.album,
+                artwork_url: e
+                    .track
+                    .thumbnail_url
+                    .map(|u| banshee::artwork::sized_thumbnail(&u, 512)),
+                source: e.track.source,
+                duration_secs: e.track.duration_secs,
+                position_secs: self.player.position().unwrap_or_default().as_secs(),
+                playing,
+            }
+        });
+        self.presence.update(now);
+    }
+
+    /// Turn Discord Rich Presence on/off or change the application ID.
+    pub fn set_discord(&self, enabled: bool, client_id: Option<String>) {
+        let id = client_id
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        self.update_prefs(|p| {
+            p.discord_presence = enabled;
+            p.discord_client_id = id.clone();
+        });
+        self.presence.configure(enabled, id);
+        self.push_presence();
+    }
+
     pub fn seek(&self, to: Duration) {
         self.player.seek(to);
+        self.push_presence();
         if let Some(m) = self.mpris.borrow().as_ref() {
             m.seeked(to.as_micros() as i64);
         }
@@ -1195,6 +1261,72 @@ impl Controller {
                             });
                         }
                         None => on_update(LibraryState::Failed(msg)),
+                    }
+                }
+            }
+        });
+    }
+
+    /// Home shelves: cached (stale-while-revalidate, 30 min), refreshed in the background.
+    pub fn load_home(&self, force: bool, on_update: impl Fn(HomeState) + 'static) {
+        let cached: Lookup<Vec<banshee::model::HomeShelf>> =
+            self.cache_get("youtube", "home", HOME_TTL);
+        let needs = force || cached.needs_fetch();
+        match cached.value() {
+            Some(s) if !s.is_empty() => {
+                self.remember_tracks(s.iter().flat_map(|sh| sh.items.iter()).filter_map(
+                    |i| match i {
+                        SearchItem::Track(t) => Some(t),
+                        SearchItem::Collection(_) => None,
+                    },
+                ));
+                on_update(HomeState::Ready(s))
+            }
+            _ => on_update(HomeState::Loading),
+        }
+        if !needs {
+            return;
+        }
+        let weak = self.weak();
+        let yt = self.youtube.clone();
+        glib::spawn_future_local(async move {
+            let Some(c) = weak.upgrade() else { return };
+            let busy = c.busy_guard();
+            drop(c);
+            let mut r = run(yt.home())
+                .await
+                .map_err(SourceError::Unavailable)
+                .and_then(|r| r);
+            if matches!(r, Err(SourceError::AuthRequired(_))) {
+                if let Ok(Ok(true)) = run(yt.refresh_session()).await {
+                    r = run(yt.home())
+                        .await
+                        .map_err(SourceError::Unavailable)
+                        .and_then(|r| r);
+                }
+            }
+            drop(busy);
+            let Some(c) = weak.upgrade() else { return };
+            match r {
+                Ok(shelves) => {
+                    c.cache_put("youtube", "home", &shelves);
+                    c.remember_tracks(shelves.iter().flat_map(|sh| sh.items.iter()).filter_map(
+                        |i| match i {
+                            SearchItem::Track(t) => Some(t),
+                            SearchItem::Collection(_) => None,
+                        },
+                    ));
+                    on_update(HomeState::Ready(shelves));
+                }
+                Err(e) => {
+                    let msg = describe(SourceKind::YouTubeMusic, &e);
+                    let cached: Lookup<Vec<banshee::model::HomeShelf>> =
+                        c.cache_get("youtube", "home", HOME_TTL);
+                    match cached.value() {
+                        Some(s) if !s.is_empty() => {
+                            c.toast_error(format!("Couldn’t refresh Home — {msg}"))
+                        }
+                        _ => on_update(HomeState::Failed(msg)),
                     }
                 }
             }
