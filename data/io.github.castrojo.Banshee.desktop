@@ -1,11 +1,11 @@
 [Desktop Entry]
 Name=Project Banshee
-Comment=Mini Mode music player inspired by the classic Banshee player
-Exec=banshee
+Comment=Queue music, videos and podcasts as fast as you type
+Exec=banshee %U
 Icon=io.github.castrojo.Banshee
 Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Player;
-Keywords=music;player;streaming;youtube;minimode;audio;banshee;
+Keywords=music;player;streaming;youtube;spotify;podcast;video;queue;banshee;
 StartupNotify=true
 SingleMainWindow=true

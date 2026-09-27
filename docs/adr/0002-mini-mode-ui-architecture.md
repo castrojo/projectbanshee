@@ -1,7 +1,7 @@
 # ADR 0002: Dedicated Mini Mode UI Architecture
 
 ## Status
-Accepted
+Superseded by ADR 0007
 
 ## Context
 The user requested Banshee "minimode" as the default, specifically choosing Mini Mode only without full-library mode. The classic Banshee mini mode packed:

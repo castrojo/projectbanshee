@@ -4,7 +4,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>Project Banshee</name>
-  <summary>Mini Mode music player inspired by the classic Banshee player</summary>
+  <summary>Build a queue of music, videos and podcasts as fast as you type</summary>
   <url type="homepage">https://github.com/castrojo/projectbanshee</url>
   <url type="bugtracker">https://github.com/castrojo/projectbanshee/issues</url>
   <developer id="io.github.castrojo">
@@ -12,8 +12,15 @@
   </developer>
   <description>
     <p>
-      Project Banshee is an independent GTK4/libadwaita music player inspired by the classic Banshee player. It starts in compact Mini Mode and streams YouTube audio; it is not affiliated with the original project.
+      Project Banshee is a queue-first player in the spirit of the classic Banshee. Search is focused when it opens: type, press Enter, keep typing. One queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order.
     </p>
+    <ul>
+      <li>Instant fuzzy search that merges remembered and live results</li>
+      <li>Your YouTube Music and Spotify playlists, artists, albums, liked songs and podcasts</li>
+      <li>Queue, position and searches survive quitting</li>
+      <li>MPRIS media controls, Mini Mode and Share to Discord</li>
+    </ul>
+    <p>Project Banshee is not affiliated with the original Banshee project.</p>
   </description>
   <launchable type="desktop-id">io.github.castrojo.Banshee.desktop</launchable>
   <categories>
@@ -26,6 +33,9 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-09-26">
+      <description><p>Rewritten in Rust with a queue-first layout, fast fuzzy search, videos, podcasts, Spotify, a library and durable app memory.</p></description>
+    </release>
     <release version="0.1.1" date="2026-09-26"/>
     <release version="0.1.0" date="2026-09-26"/>
   </releases>

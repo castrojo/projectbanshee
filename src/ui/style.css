@@ -1,0 +1,63 @@
+/* Metadata and artwork first; spacing comes from Adwaita. */
+
+.artwork {
+  border-radius: 6px;
+  background-color: alpha(currentColor, 0.08);
+}
+
+.artwork.round {
+  border-radius: 9999px;
+}
+
+.artwork-button {
+  padding: 0;
+  border-radius: 8px;
+}
+
+.item-row {
+  min-height: 56px;
+}
+
+.item-row .item-title {
+  font-weight: 600;
+}
+
+.item-row.now-playing .item-title {
+  color: var(--accent-color);
+}
+
+.source-badge {
+  font-size: 0.75em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background-color: alpha(currentColor, 0.1);
+}
+
+.source-badge.spotify {
+  color: #1db954;
+  background-color: alpha(#1db954, 0.12);
+}
+
+.source-badge.youtube {
+  color: #ff0033;
+  background-color: alpha(#ff0033, 0.10);
+}
+
+.search-hero {
+  font-size: 1.35em;
+  min-height: 46px;
+}
+
+.now-playing-bar {
+  padding: 8px 12px;
+}
+
+.play-button {
+  min-width: 42px;
+  min-height: 42px;
+}
+
+.video-view {
+  background-color: black;
+}

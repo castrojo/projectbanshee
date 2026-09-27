@@ -1,7 +1,7 @@
 # ADR 0001: Python 3 with PyGObject (GTK4 + Libadwaita + GStreamer)
 
 ## Status
-Accepted
+Superseded by ADR 0005
 
 ## Context
 The application requires GTK4 and Libadwaita, GStreamer playback, and integration with YouTube streaming tools. The workstation is image-based, so development and packaging must use the GNOME SDK/Platform instead of host development headers or pip installs.

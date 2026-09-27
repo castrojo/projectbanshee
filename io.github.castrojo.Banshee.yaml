@@ -2,7 +2,11 @@ app-id: io.github.castrojo.Banshee
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
 command: banshee
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
 finish-args:
   - --share=network
   - --share=ipc
@@ -44,8 +48,20 @@ modules:
         only-arches: [aarch64]
 
   - name: banshee
-    buildsystem: meson
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/banshee/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --locked
+      - install -Dm755 target/release/banshee /app/bin/banshee
+      - install -Dm644 data/io.github.castrojo.Banshee.desktop /app/share/applications/io.github.castrojo.Banshee.desktop
+      - install -Dm644 data/io.github.castrojo.Banshee.metainfo.xml /app/share/metainfo/io.github.castrojo.Banshee.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.castrojo.Banshee.svg /app/share/icons/hicolor/scalable/apps/io.github.castrojo.Banshee.svg
+      - install -Dm644 data/icons/hicolor/128x128/apps/io.github.castrojo.Banshee.png /app/share/icons/hicolor/128x128/apps/io.github.castrojo.Banshee.png
     sources:
       - type: dir
         path: .
-        skip: [.git, .scratch, .flatpak-builder, build, builddir, repo]
+        skip: [.git, .scratch, .flatpak-builder, build, builddir, repo, target]
+      - build-aux/cargo-sources.json
