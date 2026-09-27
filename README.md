@@ -1,6 +1,8 @@
 # Project Banshee
 
-Project Banshee builds **Banshee**, a queue-first GNOME player in the spirit of the classic Banshee. **Queueing is the default action, not playing.** Type, press Enter (or `+`), keep typing: one queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order. It is written in Rust with GTK 4, libadwaita and GStreamer. It does not play local files or radio, and it is not affiliated with the original Banshee project.
+Project Banshee builds **Banshee**, a queue-first GNOME player in the spirit of the classic Banshee. **Queueing is the default action, not playing.** Type, press Enter (or `+`), keep typing: one queue mixes YouTube Music songs, YouTube videos, podcast episodes and Spotify tracks in any order. It is written in Rust with GTK 4, libadwaita and GStreamer. It does not play local files or radio. Other than sharing a community manager it is not affiliated with the original Banshee project. Aaron or Gabriel, if you read this, ping me! 😄
+
+This only works with online services, use [Amberol](https://flathub.org/en/apps/io.bassi.Amberol) if you want local music.
 
 ## Install
 
