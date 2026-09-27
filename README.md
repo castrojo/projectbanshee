@@ -6,6 +6,10 @@ Project Banshee builds **Banshee**, a queue-first GNOME player in the spirit of 
 
 This only works with online services, use [Amberol](https://flathub.org/en/apps/io.bassi.Amberol) if you want local music.
 
+<img width="765" height="321" alt="Screenshot From 2026-09-27 00-25-09" src="https://github.com/user-attachments/assets/191146fd-5bf6-4198-82a6-9337cc0f87d0" />
+
+
+
 ## Install
 
 Download `io.github.castrojo.Banshee.flatpak` from the [GitHub Releases](https://github.com/castrojo/projectbanshee/releases), then install it:
@@ -17,9 +21,13 @@ flatpak run io.github.castrojo.Banshee
 
 The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 
+<img width="741" height="713" alt="Screenshot From 2026-09-27 00-25-20" src="https://github.com/user-attachments/assets/780419c8-b513-44a1-a565-6f8787e3d0d1" />
+
 ### What Banshee remembers
 
 Your queue, the current item and the second you were at, recent searches and their results, every track you have seen, volume and window layout are saved to `~/.var/app/io.github.castrojo.Banshee/data/banshee/`: the queue within half a second of every change and every ~5 s of playback, searches within two seconds, and everything again on quit, logout or `kill` (SIGTERM/SIGINT/SIGHUP). A hard crash or SIGKILL loses at most the last fraction of a second. Relaunching restores all of it; press Play to resume where you left off. See [ADR 0012](docs/adr/0012-durable-app-memory.md).
+
+<img width="3166" height="1956" alt="Screenshot From 2026-09-27 00-24-39" src="https://github.com/user-attachments/assets/e9147c48-d160-4d3b-9252-e540feb6bc25" />
 
 ## Accounts
 
