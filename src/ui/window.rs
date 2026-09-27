@@ -24,6 +24,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
 
     let search = SearchPage::new(ctl, false);
     let mini_player = crate::ui::mini::MiniPlayer::new(ctl);
+    let touch = crate::ui::touch::TouchMode::new(ctl);
     let library = LibraryView::new(ctl);
     let queue = QueuePanel::new(ctl, &window);
     let now = NowPlaying::new(ctl);
@@ -77,6 +78,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
     let s1 = gio::Menu::new();
     s1.append(Some("_Accounts"), Some("win.accounts"));
     s1.append(Some("_Mini Mode"), Some("win.mini-mode"));
+    s1.append(Some("_Touch Mode"), Some("win.touch-mode"));
     main_menu.append_section(None, &s1);
     let s2 = gio::Menu::new();
     s2.append(Some("_Keyboard Shortcuts"), Some("app.shortcuts"));
@@ -249,6 +251,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             stack.clone(),
         );
         let mini_toasts = mini_player.root.clone();
+        let touch_toasts = touch.root.clone();
         ctl.subscribe(move |ev| match ev {
             AppEvent::Toast(t) => {
                 let toast = adw::Toast::builder()
@@ -262,11 +265,10 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
                     toast.set_button_label(Some("Undo"));
                     toast.connect_button_clicked(move |_| undo());
                 }
-                // Toasts go wherever the user is looking: Mini Mode or the full window.
-                match window2.upgrade() {
-                    Some(w) if w.content().is_some_and(|c| c == mini_toasts) => {
-                        mini_toasts.add_toast(toast)
-                    }
+                // Toasts go wherever the user is looking: Mini Mode, Touch Mode or the window.
+                match window2.upgrade().and_then(|w| w.content()) {
+                    Some(c) if c == mini_toasts => mini_toasts.add_toast(toast),
+                    Some(c) if c == touch_toasts => touch_toasts.add_toast(toast),
                     _ => toasts.add_toast(toast),
                 }
             }
@@ -305,20 +307,25 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         );
     }
     {
-        let (search, stack, mini_player, w) = (
+        let (search, stack, mini_player, touch, w) = (
             search.clone(),
             stack.clone(),
             mini_player.clone(),
+            touch.clone(),
             window.downgrade(),
         );
         add(
             "focus-search",
             Box::new(move || {
-                // In Mini Mode, search means the quick-add under the capsule.
-                if w.upgrade()
-                    .is_some_and(|w| w.content().is_some_and(|c| c == mini_player.root))
-                {
+                let content = w.upgrade().and_then(|w| w.content());
+                // In Mini Mode, search means the quick-add under the capsule; in Touch Mode,
+                // the search sheet.
+                if content.as_ref() == Some(mini_player.root.upcast_ref()) {
                     mini_player.open_quick_add();
+                    return;
+                }
+                if content.as_ref() == Some(touch.root.upcast_ref()) {
+                    touch.open_search();
                     return;
                 }
                 stack.set_visible_child_name("search");
@@ -364,6 +371,8 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         );
     }
 
+    let is_on = |a: &gio::SimpleAction| a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
+    let touch_mode = gio::SimpleAction::new_stateful("touch-mode", None, &false.to_variant());
     let mini = gio::SimpleAction::new_stateful("mini-mode", None, &false.to_variant());
     {
         // Size to return to when leaving Mini Mode (the remembered size if we start in it).
@@ -371,26 +380,40 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
             let p = ctl.prefs.borrow();
             Rc::new(Cell::new((p.window_width, p.window_height)))
         };
-        let (w, outer, mini_player, mini_on, sync_extras) = (
+        let (w, outer, mini_player, mini_on, sync_extras, touch_mode, ctl) = (
             window.downgrade(),
             outer.clone(),
             mini_player.clone(),
             mini_on.clone(),
             sync_extras.clone(),
+            touch_mode.clone(),
+            ctl.clone(),
         );
         let was_maximized = Rc::new(Cell::new(false));
         mini.connect_activate(move |a, _| {
             let Some(w) = w.upgrade() else { return };
-            let on = !a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
+            let on = !is_on(a);
+            // The presentations exclude each other: leave Touch Mode first. Its window is
+            // still fullscreen-sized until the compositor answers, so return to the
+            // remembered size rather than that.
+            let from_touch = on && is_on(&touch_mode);
+            if from_touch {
+                touch_mode.activate(None);
+                let p = ctl.prefs.borrow();
+                saved.set((p.window_width, p.window_height));
+                was_maximized.set(p.maximized);
+            }
             a.set_state(&on.to_variant());
             mini_on.set(on);
             sync_extras();
             // Mini Mode swaps the whole window content for the capsule.
             if on {
-                was_maximized.set(w.is_maximized());
+                if !from_touch {
+                    was_maximized.set(w.is_maximized());
+                }
                 if w.is_maximized() {
                     w.unmaximize();
-                } else if w.width() > 0 && w.height() > 0 {
+                } else if !from_touch && w.width() > 0 && w.height() > 0 {
                     saved.set((w.width(), w.height()));
                 }
                 w.set_content(Some(&mini_player.root));
@@ -411,11 +434,47 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         mini.activate(None);
     }
 
+    // Touch Mode (ADR 0015): fullscreen, content swapped like Mini Mode.
+    {
+        let (w, outer, touch, mini, search) = (
+            window.downgrade(),
+            outer.clone(),
+            touch.clone(),
+            mini.clone(),
+            search.clone(),
+        );
+        touch_mode.connect_activate(move |a, _| {
+            let Some(w) = w.upgrade() else { return };
+            let on = !is_on(a);
+            if on && is_on(&mini) {
+                mini.activate(None);
+            }
+            a.set_state(&on.to_variant());
+            if on {
+                w.set_content(Some(&touch.root));
+                w.fullscreen();
+            } else {
+                touch.close_search();
+                w.unfullscreen();
+                w.set_content(Some(&outer));
+                search.focus();
+            }
+        });
+    }
+    window.add_action(&touch_mode);
+    if ctl.prefs.borrow().touch_mode {
+        touch_mode.activate(None);
+    }
+
     // Remember window geometry and layout as it changes (logout never emits close-request).
     {
-        let (ctl, mini) = (ctl.clone(), mini.clone());
+        let (ctl, mini, touch_mode) = (ctl.clone(), mini.clone(), touch_mode.clone());
         let track_size = move |w: &adw::ApplicationWindow| {
-            let is_mini = mini.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
+            // Mini and Touch Mode sizes aren't the window's remembered size.
+            if is_on(&touch_mode) {
+                return;
+            }
+            let is_mini = is_on(&mini);
             let maximized = w.is_maximized();
             let (dw, dh) = w.default_size();
             ctl.update_prefs(move |p| {
@@ -446,8 +505,15 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
     {
         let ctl = ctl.clone();
         mini.connect_state_notify(move |a| {
-            let on = a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
+            let on = is_on(a);
             ctl.update_prefs(move |p| p.mini_mode = on);
+        });
+    }
+    {
+        let ctl = ctl.clone();
+        touch_mode.connect_state_notify(move |a| {
+            let on = is_on(a);
+            ctl.update_prefs(move |p| p.touch_mode = on);
         });
     }
     {
@@ -463,7 +529,7 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         window.connect_map(move |_| search.focus());
     }
     // Keep the search page's Rc alive with the window.
-    let keep = (search, library, queue, now, mini_player);
+    let keep = (search, library, queue, now, mini_player, touch);
     window.connect_destroy(move |_| {
         let _ = &keep;
     });

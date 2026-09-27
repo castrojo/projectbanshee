@@ -54,6 +54,11 @@ impl Artwork {
         }
     }
 
+    /// The widgets holding the thumbnail's size, for breakpoints that resize it.
+    pub fn size_widgets(&self) -> [gtk::Widget; 2] {
+        [self.root.clone().upcast(), self.picture.clone().upcast()]
+    }
+
     pub fn set_icon(&self, icon: &str) {
         self.placeholder.set_icon_name(Some(icon));
     }

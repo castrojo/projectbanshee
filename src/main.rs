@@ -173,6 +173,7 @@ fn install_app_actions(app: &adw::Application) {
                 ("Next", "<Control>Right"),
                 ("Previous", "<Control>Left"),
                 ("Mini Mode", "<Control>m"),
+                ("Touch Mode", "F11"),
             ] {
                 play.add(adw::ShortcutsItem::new(t, k));
             }
@@ -186,6 +187,14 @@ fn install_app_actions(app: &adw::Application) {
                 mini.add(adw::ShortcutsItem::new(t, k));
             }
             d.add(mini);
+            let touch = adw::ShortcutsSection::new(Some("Touch Mode"));
+            for (t, k) in [
+                ("Search and add to queue", "<Control>f"),
+                ("Leave Touch Mode", "Escape F11"),
+            ] {
+                touch.add(adw::ShortcutsItem::new(t, k));
+            }
+            d.add(touch);
             let general = adw::ShortcutsSection::new(Some("General"));
             for (t, k) in [
                 ("Library", "<Alt>2"),
@@ -213,6 +222,7 @@ fn install_app_actions(app: &adw::Application) {
         ("win.next", &["<Control>Right"]),
         ("win.previous", &["<Control>Left"]),
         ("win.mini-mode", &["<Control>m"]),
+        ("win.touch-mode", &["F11"]),
         ("win.accounts", &["<Control>comma"]),
     ] {
         app.set_accels_for_action(action, accels);

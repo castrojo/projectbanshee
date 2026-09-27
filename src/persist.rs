@@ -120,6 +120,8 @@ pub struct Prefs {
     pub maximized: bool,
     pub show_queue: bool,
     pub mini_mode: bool,
+    /// Fullscreen Touch Mode (ADR 0015).
+    pub touch_mode: bool,
     /// Show the playing track as Discord Rich Presence.
     pub discord_presence: bool,
     /// Discord application ID used for Rich Presence (created by the user).
@@ -135,6 +137,7 @@ impl Default for Prefs {
             maximized: false,
             show_queue: true,
             mini_mode: false,
+            touch_mode: false,
             discord_presence: false,
             discord_client_id: None,
         }

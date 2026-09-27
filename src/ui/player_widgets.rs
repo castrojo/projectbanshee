@@ -35,6 +35,33 @@ fn is_active(s: PlaybackState) -> bool {
 pub struct TrackInfo {
     pub root: gtk::Box,
     pub backdrop: gtk::Picture,
+    pub art: Artwork,
+    /// Title, artist, album and "Up next" labels.
+    text: gtk::Box,
+}
+
+impl TrackInfo {
+    /// Cover above centred text (Touch Mode's stage), instead of cover beside text.
+    pub fn stack_vertically(&self, spacing: i32) {
+        self.root.set_orientation(gtk::Orientation::Vertical);
+        self.root.set_spacing(spacing);
+        let mut child = self.root.first_child();
+        while let Some(w) = child {
+            w.set_halign(gtk::Align::Center);
+            child = w.next_sibling();
+        }
+        let mut child = self.text.first_child();
+        while let Some(w) = child {
+            if let Some(label) = w.downcast_ref::<gtk::Label>() {
+                label.set_xalign(0.5);
+                label.set_justify(gtk::Justification::Center);
+                label.set_wrap(true);
+                label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+                label.set_lines(2);
+            }
+            child = w.next_sibling();
+        }
+    }
 }
 
 impl TrackInfo {
@@ -197,8 +224,12 @@ impl TrackInfo {
                 }
             }
         });
-        let _ = art;
-        Self { root, backdrop }
+        Self {
+            root,
+            backdrop,
+            art,
+            text,
+        }
     }
 }
 

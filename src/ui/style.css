@@ -255,3 +255,286 @@
   opacity: 0.55;
 }
 
+
+/* ---- Touch Mode (ADR 0015): the cover lights the room; the queue is built for fingers ---- */
+.touch-mode {
+  background-color: #141417;
+}
+
+.touch-mode .artwork-backdrop {
+  filter: blur(64px) saturate(1.7) brightness(0.5);
+}
+
+.touch-scrim {
+  background-image:
+    radial-gradient(circle at 26% 42%,
+      color-mix(in srgb, var(--banshee-art, #3584e4) 38%, transparent) 0%,
+      transparent 62%),
+    linear-gradient(to bottom, alpha(black, 0.12), alpha(black, 0.5));
+}
+
+.touch-content,
+.touch-content label,
+.touch-content button {
+  color: white;
+}
+
+/* Stage */
+.touch-stage .artwork {
+  border-radius: 22px;
+  box-shadow: 0 28px 64px alpha(black, 0.55), 0 2px 8px alpha(black, 0.3);
+}
+
+.touch-stage .artwork-button {
+  border-radius: 22px;
+}
+
+.touch-stage .track-title {
+  font-size: 2.1em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.touch-stage .track-artist {
+  font-size: 1.3em;
+  font-weight: 500;
+  opacity: 0.82;
+}
+
+.touch-stage .up-next {
+  font-size: 1em;
+  opacity: 0.6;
+}
+
+.touch-progress label {
+  font-size: 0.95em;
+  opacity: 0.8;
+}
+
+.touch-progress trough {
+  min-height: 8px;
+  border-radius: 9999px;
+  background-color: alpha(white, 0.22);
+}
+
+.touch-progress highlight {
+  min-height: 8px;
+  border-radius: 9999px;
+  background-color: white;
+}
+
+.touch-progress slider {
+  min-width: 26px;
+  min-height: 26px;
+  margin: -9px;
+  background-color: white;
+  box-shadow: 0 2px 8px alpha(black, 0.4);
+}
+
+.touch-transport button {
+  min-width: 68px;
+  min-height: 68px;
+  -gtk-icon-size: 30px;
+}
+
+.touch-transport .play-button {
+  background-color: white;
+  color: #141417;
+  -gtk-icon-size: 40px;
+  box-shadow: 0 10px 28px alpha(black, 0.4);
+}
+
+.touch-extras button,
+.touch-extras scalebutton > button {
+  min-width: 56px;
+  min-height: 56px;
+  -gtk-icon-size: 22px;
+}
+
+.touch-content button.flat:hover,
+.touch-content scalebutton > button:hover {
+  background-color: alpha(white, 0.14);
+}
+
+.touch-content button.flat:checked {
+  background-color: alpha(white, 0.22);
+}
+
+.touch-leave {
+  min-width: 52px;
+  min-height: 52px;
+}
+
+/* Queue slab */
+.touch-queue {
+  border-radius: 30px;
+  background-color: alpha(black, 0.34);
+  box-shadow: inset 0 1px alpha(white, 0.08);
+}
+
+.touch-queue-header {
+  padding: 22px 16px 12px 28px;
+}
+
+.touch-queue-header button {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+.touch-queue-title {
+  font-size: 1.6em;
+  font-weight: 800;
+}
+
+.touch-queue-summary {
+  opacity: 0.7;
+}
+
+.touch-add {
+  min-height: 48px;
+  padding: 0 22px;
+  background-color: white;
+  color: #141417;
+  font-weight: 700;
+}
+
+.touch-add label,
+.touch-add image {
+  color: #141417;
+}
+
+.touch-queue scrolledwindow,
+.touch-queue statuspage,
+.touch-queue-list {
+  background: transparent;
+}
+
+.touch-queue-list > row {
+  padding: 0;
+  margin: 2px 10px;
+  border-radius: 18px;
+  background: transparent;
+}
+
+.touch-queue-list > row:hover {
+  background-color: alpha(white, 0.06);
+}
+
+.touch-queue-list > row:active {
+  background-color: alpha(white, 0.12);
+}
+
+.touch-row {
+  border-radius: 18px;
+  color: white;
+}
+
+.touch-row image {
+  color: white;
+}
+
+.touch-row .item-row {
+  min-height: 76px;
+  padding: 0 6px 0 14px;
+  border-radius: 18px;
+}
+
+.touch-row .item-title {
+  font-size: 1.08em;
+  font-weight: 700;
+}
+
+.touch-row .artwork {
+  border-radius: 10px;
+}
+
+.touch-row .item-row button {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+.touch-row .source-badge {
+  background-color: alpha(white, 0.14);
+  color: white;
+}
+
+.touch-row .drag-handle {
+  min-width: 48px;
+  min-height: 48px;
+  -gtk-icon-size: 22px;
+  opacity: 0.55;
+}
+
+.touch-row.current .item-row {
+  background-color: alpha(white, 0.12);
+  box-shadow: inset 5px 0 var(--banshee-art, #3584e4);
+}
+
+.touch-row.current .item-title {
+  color: white;
+}
+
+.touch-row.played {
+  opacity: 0.5;
+}
+
+.touch-row.lifted .item-row {
+  background-color: alpha(white, 0.2);
+  box-shadow: 0 14px 36px alpha(black, 0.5);
+}
+
+.touch-row.lifted .drag-handle {
+  opacity: 1;
+}
+
+.swipe-underlay {
+  padding: 0 26px;
+  border-radius: 18px;
+  background-color: var(--destructive-bg-color);
+  color: white;
+}
+
+/* Search sheet */
+.touch-search {
+  padding-top: 26px;
+}
+
+.touch-mode sheet {
+  background-color: #1e1e22;
+  color: white;
+}
+
+.touch-search listview,
+.touch-search scrolledwindow,
+.touch-search statuspage,
+.touch-search .up-next-list,
+.touch-search .up-next-list row {
+  background: transparent;
+  color: white;
+}
+
+.touch-search entry {
+  min-height: 52px;
+  font-size: 1.15em;
+  background-color: alpha(white, 0.12);
+  color: white;
+}
+
+.touch-search .item-row {
+  min-height: 68px;
+}
+
+.touch-search .item-row button {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+.touch-search .source-badge {
+  background-color: alpha(white, 0.14);
+  color: white;
+}
+
+.touch-search listview > row:selected,
+.touch-search listview > row:hover {
+  background-color: alpha(white, 0.1);
+}

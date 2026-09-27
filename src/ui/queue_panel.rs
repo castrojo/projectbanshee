@@ -100,26 +100,7 @@ impl QueuePanel {
             move || {
                 let n = ctl.queue_len();
                 stack.set_visible_child_name(if n == 0 { "empty" } else { "list" });
-                // What's still to come matters more than the whole list.
-                let start = ctl.current_index().map_or(0, |c| c + 1);
-                let upcoming: Vec<_> = ctl.queue_tracks().into_iter().skip(start).collect();
-                let left: u64 = upcoming
-                    .iter()
-                    .filter_map(|t| t.duration_secs)
-                    .map(u64::from)
-                    .sum();
-                let sub = match upcoming.len() {
-                    0 if n > 0 => "Nothing up next".to_string(),
-                    0 => String::new(),
-                    1 => "1 up next".into(),
-                    k => format!("{k} up next"),
-                };
-                let sub = if left > 0 {
-                    format!("{sub} · {} left", banshee::model::format_total(left))
-                } else {
-                    sub
-                };
-                title.set_subtitle(&sub);
+                title.set_subtitle(&queue_summary(&ctl));
             }
         };
         refresh();
@@ -154,6 +135,29 @@ impl QueuePanel {
         window.add_action(&clear);
 
         Rc::new(Self { root, header })
+    }
+}
+
+/// "3 up next · 12 min left": what's still to come matters more than the whole list.
+pub fn queue_summary(ctl: &Controller) -> String {
+    let n = ctl.queue_len();
+    let start = ctl.current_index().map_or(0, |c| c + 1);
+    let upcoming: Vec<_> = ctl.queue_tracks().into_iter().skip(start).collect();
+    let left: u64 = upcoming
+        .iter()
+        .filter_map(|t| t.duration_secs)
+        .map(u64::from)
+        .sum();
+    let sub = match upcoming.len() {
+        0 if n > 0 => "Nothing up next".to_string(),
+        0 => String::new(),
+        1 => "1 up next".into(),
+        k => format!("{k} up next"),
+    };
+    if left > 0 {
+        format!("{sub} · {} left", banshee::model::format_total(left))
+    } else {
+        sub
     }
 }
 

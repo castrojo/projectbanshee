@@ -9,6 +9,7 @@ pub mod player_widgets;
 pub mod queue_panel;
 pub mod rows;
 pub mod search;
+pub mod touch;
 pub mod window;
 
 use crate::app::Controller;
