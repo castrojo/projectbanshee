@@ -15,4 +15,5 @@ pub mod player;
 pub mod queue;
 pub mod runtime;
 pub mod sources;
+pub mod suggest;
 pub mod touch;

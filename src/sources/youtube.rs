@@ -30,7 +30,7 @@ use ytmapi_rs::common::{
 };
 use ytmapi_rs::continuations::ParseFromContinuable;
 use ytmapi_rs::error::ErrorKind;
-use ytmapi_rs::parse::{ParseFrom, ProcessedResult};
+use ytmapi_rs::parse::{ParseFrom, ProcessedResult, WatchPlaylistTrack};
 use ytmapi_rs::query::search::{
     BasicSearch, EpisodesFilter, FilteredSearch, PodcastsFilter, SongsFilter, VideosFilter,
 };
@@ -274,6 +274,25 @@ impl YouTubeMusicSource {
                 duration_secs: parse_text_duration(&track.duration),
                 thumbnail_url: pick_thumbnail(&track.thumbnails),
             })
+        }
+        .boxed()
+    }
+
+    /// YouTube Music's up-next for a video (its automix radio, as the web player queues it
+    /// after the song), for Keep Going. Starts with the video itself.
+    pub fn up_next(&self, video_id: String) -> BoxFuture<'static, SourceResult<Vec<Track>>> {
+        let inner = self.inner.clone();
+        async move {
+            if !is_video_id(&video_id) {
+                return Err(SourceError::NotFound);
+            }
+            let yt = inner.anon().await?;
+            let tracks = timed(
+                API_TIMEOUT,
+                yt.get_watch_playlist_from_video_id(VideoID::from_raw(video_id.as_str())),
+            )
+            .await?;
+            Ok(tracks.into_iter().filter_map(watch_track).collect())
         }
         .boxed()
     }
@@ -873,24 +892,23 @@ async fn open_playlist<A: AuthToken>(
     }
     let query = GetWatchPlaylistQuery::new_from_playlist_id(PlaylistID::from_raw(playlist_id));
     let tracks = timed(API_TIMEOUT, yt.query(query)).await?;
-    Ok(tracks
-        .into_iter()
-        .filter(|t| is_video_id(t.video_id.get_raw()))
-        .map(|t| {
-            let id = t.video_id.get_raw().to_string();
-            Track {
-                kind: MediaKind::Music,
-                source: SourceKind::YouTubeMusic,
-                title: t.title,
-                artist: t.author,
-                artist_id: None,
-                album: None,
-                duration_secs: parse_text_duration(&t.duration),
-                thumbnail_url: pick_thumbnail(&t.thumbnails).or_else(|| Some(video_thumbnail(&id))),
-                id,
-            }
-        })
-        .collect())
+    Ok(tracks.into_iter().filter_map(watch_track).collect())
+}
+
+/// A watch playlist (radio / up-next) row as a song, if it has a playable video id.
+fn watch_track(t: WatchPlaylistTrack) -> Option<Track> {
+    let id = t.video_id.get_raw().to_string();
+    is_video_id(&id).then(|| Track {
+        kind: MediaKind::Music,
+        source: SourceKind::YouTubeMusic,
+        title: t.title,
+        artist: t.author,
+        artist_id: None,
+        album: None,
+        duration_secs: parse_text_duration(&t.duration),
+        thumbnail_url: pick_thumbnail(&t.thumbnails).or_else(|| Some(video_thumbnail(&id))),
+        id,
+    })
 }
 
 /// Playable rows of a playlist page or continuation, skipping greyed-out (unavailable) ones.

@@ -1,11 +1,11 @@
 //! Queue sidebar: always-visible, editable independently of playback (ADR 0007).
 
 use crate::app::{AppEvent, Controller};
-use crate::ui::rows::{ItemRow, RowItem, RowMode};
+use crate::ui::rows::{ItemRow, RowItem, RowMode, keep_going_section};
 use adw::prelude::*;
 use banshee::queue::QueueEntry;
 use gtk::{gdk, gio, glib};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub struct QueuePanel {
@@ -85,9 +85,16 @@ impl QueuePanel {
             .description("Search, then press Enter or + to add items. Music, videos and podcasts can be mixed freely.")
             .build();
         empty.add_css_class("compact");
+        // Keep Going sits under the list (which scrolls itself) when nothing is Up next.
+        let keep_going = keep_going_section(ctl, None, Some(300));
+        keep_going.add_css_class("queue-keep-going");
+        keep_going.set_margin_top(6);
+        let list_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        list_page.append(&scroller);
+        list_page.append(&keep_going);
         let stack = gtk::Stack::new();
         stack.add_named(&empty, Some("empty"));
-        stack.add_named(&scroller, Some("list"));
+        stack.add_named(&list_page, Some("list"));
 
         let root = adw::ToolbarView::builder().content(&stack).build();
         root.add_top_bar(&header);
@@ -105,8 +112,31 @@ impl QueuePanel {
             let refresh = refresh.clone();
             let weak_ctl = Rc::downgrade(ctl);
             let list = list.clone();
+            // Keep Going shows only while nothing is Up next (the current entry is the last
+            // one), and it shrinks the list: keep the end of the list in view once the list
+            // has laid out again (an entry appended or updated just now has no position
+            // before that, and splicing it moves the view).
+            let keep_going_shown = Cell::new(false);
+            let show_end = |list: &gtk::ListView| {
+                let frames = Cell::new(0);
+                list.add_tick_callback(move |list, _| {
+                    frames.set(frames.get() + 1);
+                    if frames.get() < 2 {
+                        return glib::ControlFlow::Continue;
+                    }
+                    if let Some(a) = list.vadjustment() {
+                        a.set_value(a.upper() - a.page_size());
+                    }
+                    glib::ControlFlow::Break
+                });
+            };
             ctl.subscribe(move |ev| match ev {
-                AppEvent::QueueChanged => refresh(),
+                AppEvent::QueueChanged => {
+                    refresh();
+                    if keep_going_shown.get() {
+                        show_end(&list);
+                    }
+                }
                 AppEvent::NowPlaying(_) => {
                     refresh();
                     let Some(c) = weak_ctl.upgrade() else { return };
@@ -121,6 +151,12 @@ impl QueuePanel {
                     // Keep the playing entry in view.
                     if let Some(i) = c.current_index() {
                         list.scroll_to(i as u32, gtk::ListScrollFlags::NONE, None);
+                    }
+                }
+                AppEvent::KeepGoing(tracks) => {
+                    keep_going_shown.set(!tracks.is_empty());
+                    if !tracks.is_empty() {
+                        show_end(&list);
                     }
                 }
                 _ => {}

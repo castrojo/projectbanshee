@@ -532,3 +532,84 @@ pub fn item_track(i: &RowItem) -> Option<&Track> {
         RowItem::Result(SearchItem::Collection(_)) => None,
     }
 }
+
+/// Keep Going (ADR 0016): a heading over the songs suggested while nothing is Up next,
+/// hidden while there are none. Tapping a row or its `+` appends the song (the normal
+/// enqueue path, which continues playback if the Queue had run out). `row_class` styles
+/// the rows for a surface; `max_height` makes the rows scroll past that height (for a
+/// section sitting under a list that scrolls on its own).
+pub fn keep_going_section(
+    ctl: &Rc<Controller>,
+    row_class: Option<&'static str>,
+    max_height: Option<i32>,
+) -> gtk::Box {
+    let title = gtk::Label::builder()
+        .label("Keep Going")
+        .xalign(0.0)
+        .build();
+    title.add_css_class("heading");
+    title.add_css_class("keep-going-title");
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .build();
+    list.add_css_class("navigation-sidebar");
+    list.add_css_class("keep-going-list");
+    list.update_property(&[gtk::accessible::Property::Label("Keep Going")]);
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    root.add_css_class("keep-going");
+    root.append(&title);
+    let scroller = max_height.map(|h| {
+        gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .max_content_height(h)
+            .child(&list)
+            .build()
+    });
+    match &scroller {
+        Some(s) => root.append(s),
+        None => root.append(&list),
+    }
+    {
+        let ctl = Rc::downgrade(ctl);
+        list.connect_row_activated(move |_, row| {
+            let (Some(ctl), Some(item)) = (
+                ctl.upgrade(),
+                row.child().and_downcast::<ItemRow>().and_then(|r| r.item()),
+            ) else {
+                return;
+            };
+            if let RowItem::Result(SearchItem::Track(t)) = item {
+                ctl.enqueue(t);
+            }
+        });
+    }
+    let render = {
+        let (weak, list, root) = (Rc::downgrade(ctl), list.clone(), root.clone());
+        move |tracks: &[Track]| {
+            let Some(ctl) = weak.upgrade() else { return };
+            list.remove_all();
+            root.set_visible(!tracks.is_empty());
+            // New suggestions start from the top.
+            if let Some(s) = &scroller {
+                s.vadjustment().set_value(0.0);
+            }
+            for t in tracks {
+                let row = ItemRow::new(&ctl, RowMode::QuickAdd);
+                row.bind(&ctl, RowItem::Result(SearchItem::Track(t.clone())), false);
+                let item = gtk::ListBoxRow::builder().child(&row).build();
+                if let Some(class) = row_class {
+                    item.add_css_class(class);
+                }
+                list.append(&item);
+            }
+        }
+    };
+    render(&ctl.keep_going());
+    ctl.subscribe(move |ev| {
+        if let crate::app::AppEvent::KeepGoing(tracks) = ev {
+            render(tracks);
+        }
+    });
+    root
+}

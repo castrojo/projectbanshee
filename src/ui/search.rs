@@ -2,7 +2,7 @@
 //! debounced remote searches merged into one ranked list, Enter / `+` to queue.
 
 use crate::app::Controller;
-use crate::ui::rows::{ItemRow, RowItem, RowMode};
+use crate::ui::rows::{ItemRow, RowItem, RowMode, keep_going_section};
 use adw::prelude::*;
 use banshee::model::{Collection, SearchFilter, SearchItem, SourceKind};
 use banshee::runtime::run;
@@ -240,7 +240,8 @@ impl SearchPage {
                 body.set_margin_bottom(24);
                 empty_scroller.set_child(Some(&body));
             }
-            // Mini Mode quick-add: recent searches and what's coming up in the queue.
+            // Mini Mode quick-add: recent searches, what's coming up in the queue, and
+            // Keep Going once nothing is.
             None => {
                 let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
                 body.set_margin_start(12);
@@ -255,6 +256,7 @@ impl SearchPage {
                 body.append(&hint);
                 body.append(&recent_clamp);
                 body.append(&up_next_box(ctl));
+                body.append(&keep_going_section(ctl, None, None));
                 empty_scroller.set_child(Some(&body));
             }
         }

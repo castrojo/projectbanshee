@@ -21,6 +21,7 @@ The bundle requires the GNOME 50 runtime. Install it from Flathub if prompted.
 - **Filters**: All, Music, Videos, Podcasts.
 - **Links**: paste a YouTube, YouTube Music or Spotify link into Search and press Enter to queue it.
 - **Queue** is the sidebar (F9 toggles it). Drag rows to reorder, use `−` to remove (with Undo), activate a row to play it. Shuffle and repeat are in the Now Playing Bar.
+- **Keep Going**: when nothing is up next, the queue shows up to eight songs to add: what YouTube Music would play after the last song, then your Quick picks, never anything already queued. Nothing plays by itself; tap a song (or its `+`) to add it. If playback has already reached the end of the queue, the song you add starts playing. Mini Mode's quick-add and Touch Mode show the same suggestions.
 - **Library** shows your YouTube Music and Spotify playlists, liked songs, albums, artists and podcasts. Open one to browse it or use `+` to queue all of it. Library data is cached and refreshed in the background.
 - **Now Playing Bar**: click the artwork to open the artist on YouTube Music. Videos also show in the Video tab.
 - **Mini Mode** (Ctrl+M or the button in the Now Playing Bar) turns the window into a capsule lit by the cover art: track, Up next, transport and a seek line. Press `+` or Ctrl+F in it to search and queue without leaving Mini Mode (it also shows recent searches and Up Next); Escape closes the search. Space plays or pauses and scrolling over the capsule changes the volume.

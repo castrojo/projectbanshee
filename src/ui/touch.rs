@@ -6,7 +6,7 @@
 
 use crate::app::{AppEvent, Controller};
 use crate::ui::player_widgets::{Extras, Progress, TrackInfo, Transport};
-use crate::ui::rows::{ItemRow, RowItem, RowMode};
+use crate::ui::rows::{ItemRow, RowItem, RowMode, keep_going_section};
 use crate::ui::search::SearchPage;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
@@ -680,6 +680,8 @@ fn build_queue(ctl: &Rc<Controller>) -> (gtk::Box, OpenAdd, gtk::GestureDrag) {
     slab.set_margin_end(24);
     slab.append(&header);
     slab.append(&stack);
+    // Keep Going under the list when nothing is Up next: touch rows, a few visible at once.
+    slab.append(&keep_going_section(ctl, Some("touch-row"), Some(250)));
 
     let refresh = {
         let (ctl, stack, summary) = (ctl.clone(), stack.clone(), summary.clone());

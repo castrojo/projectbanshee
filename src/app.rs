@@ -18,10 +18,10 @@ use banshee::runtime::run;
 use banshee::sources::spotify::SpotifySource;
 use banshee::sources::youtube::YouTubeMusicSource;
 use banshee::sources::{AudioSource, Resolved, SourceError};
-use banshee::{memory, paths};
+use banshee::{memory, paths, suggest};
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -34,6 +34,8 @@ const RESOLVED_TTL: Duration = Duration::from_secs(45 * 60);
 const GC_INTERVAL: Duration = Duration::from_secs(60);
 const LOCAL_INDEX_CAP: usize = 20_000;
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
+/// Keep Going shows at most this many songs.
+const KEEP_GOING_MAX: usize = 8;
 
 /// Things the UI reacts to.
 #[derive(Clone)]
@@ -51,6 +53,8 @@ pub enum AppEvent {
     AccountsChanged,
     ModesChanged,
     HistoryChanged,
+    /// Keep Going suggestions changed (empty: hide them).
+    KeepGoing(Vec<Track>),
     Raise,
 }
 
@@ -147,6 +151,16 @@ pub struct Controller {
     accounts_epoch: Cell<u64>,
     last_saved_position: Cell<u64>,
     library_inflight: RefCell<std::collections::HashSet<SourceKind>>,
+    /// Keep Going suggestions shown now (empty while something is Up next).
+    keep_going: RefCell<Vec<Track>>,
+    /// YouTube Music's up-next per seed entry, fetched once (empty while in flight, on
+    /// failure, or for Spotify seeds). Pruned to entries still in the Queue.
+    keep_going_up_next: RefCell<HashMap<EntryId, Vec<Track>>>,
+    /// Songs of the Home feed's "Quick picks" shelf; `None` until Home was read.
+    quick_picks: RefCell<Option<Vec<Track>>>,
+    /// Playback stopped because the Queue ran out (the last entry finished or Next was
+    /// pressed on it); an add then continues with the new entry.
+    ended_at_end: Cell<bool>,
     self_weak: RefCell<Weak<Controller>>,
 }
 
@@ -227,6 +241,10 @@ impl Controller {
             accounts_epoch: Cell::new(0),
             last_saved_position: Cell::new(0),
             library_inflight: RefCell::new(Default::default()),
+            keep_going: RefCell::new(Vec::new()),
+            keep_going_up_next: RefCell::new(HashMap::new()),
+            quick_picks: RefCell::new(None),
+            ended_at_end: Cell::new(false),
             self_weak: RefCell::new(Weak::new()),
         });
         *this.self_weak.borrow_mut() = Rc::downgrade(&this);
@@ -285,6 +303,14 @@ impl Controller {
             if let Some(m) = self.mpris.borrow().as_ref() {
                 m.notify();
             }
+        }
+        // Up next can only appear or vanish when the Queue, the current entry or Repeat
+        // changes.
+        if matches!(
+            ev,
+            AppEvent::QueueChanged | AppEvent::NowPlaying(_) | AppEvent::ModesChanged
+        ) {
+            self.refresh_keep_going();
         }
     }
 
@@ -412,9 +438,11 @@ impl Controller {
     }
 
     /// The default action: append to the queue. Starts playback only if nothing is playing
-    /// and the queue was empty before, so the first add "just works".
+    /// and the queue was empty before, so the first add "just works", or if playback ran out
+    /// at the end of the Queue, so the add continues it (e.g. a Keep Going suggestion).
     pub fn enqueue(&self, track: Track) {
         let was_idle = self.queue.borrow().is_empty() && self.current_entry().is_none();
+        let continues = self.ran_out();
         self.remember_tracks([&track]);
         let title = track.title.clone();
         let id = self.queue.borrow_mut().append(track);
@@ -431,6 +459,8 @@ impl Controller {
         });
         if was_idle {
             self.play_index(0);
+        } else if continues {
+            self.play_entry_id(id);
         }
     }
 
@@ -440,9 +470,11 @@ impl Controller {
             return;
         }
         let was_idle = self.queue.borrow().is_empty();
+        let continues = self.ran_out();
         self.remember_tracks(tracks.iter());
         let n = tracks.len();
         let ids = self.queue.borrow_mut().append_many(tracks);
+        let first = ids.first().copied();
         self.queue_changed();
         let weak = self.weak();
         self.toast(ToastSpec {
@@ -459,7 +491,98 @@ impl Controller {
         });
         if was_idle {
             self.play_index(0);
+        } else if let Some(first) = first.filter(|_| continues) {
+            self.play_entry_id(first);
         }
+    }
+
+    /// Playback stopped because the Queue ran out, and the entry that finished is still the
+    /// last one: appending now should continue playback.
+    fn ran_out(&self) -> bool {
+        let q = self.queue.borrow();
+        self.ended_at_end.get()
+            && self.player.state() == PlaybackState::Stopped
+            && q.current_index().is_some_and(|c| c + 1 == q.len())
+    }
+
+    /// Keep Going suggestions shown now (empty while something is Up next).
+    pub fn keep_going(&self) -> Vec<Track> {
+        self.keep_going.borrow().clone()
+    }
+
+    /// Recompute Keep Going: shown only when the Queue has entries and nothing is Up next,
+    /// seeded by the last entry, never listing anything already queued.
+    fn refresh_keep_going(&self) {
+        let seed = match self.up_next() {
+            Some(_) => None,
+            None => self.queue.borrow().entries().last().cloned(),
+        };
+        let list = match seed {
+            None => Vec::new(),
+            Some(seed) => {
+                self.fetch_keep_going(&seed);
+                if self.quick_picks.borrow().is_none() {
+                    let home: Lookup<Vec<banshee::model::HomeShelf>> =
+                        self.cache_get("youtube", "home", HOME_TTL);
+                    if let Some(shelves) = home.value() {
+                        *self.quick_picks.borrow_mut() = Some(suggest::quick_picks(&shelves));
+                    }
+                }
+                let q = self.queue.borrow();
+                self.keep_going_up_next
+                    .borrow_mut()
+                    .retain(|id, _| q.index_of(*id).is_some());
+                let queued: HashSet<String> = q.entries().iter().map(|e| e.track.key()).collect();
+                let up_next = self.keep_going_up_next.borrow();
+                let picks = self.quick_picks.borrow();
+                suggest::keep_going(
+                    up_next.get(&seed.id).map(Vec::as_slice).unwrap_or_default(),
+                    picks.as_deref().unwrap_or_default(),
+                    &queued,
+                    KEEP_GOING_MAX,
+                )
+            }
+        };
+        if *self.keep_going.borrow() == list {
+            return;
+        }
+        *self.keep_going.borrow_mut() = list.clone();
+        self.emit(AppEvent::KeepGoing(list));
+    }
+
+    /// Fetch YouTube Music's up-next for `seed` once, off the main thread. Spotify seeds
+    /// (its recommendations API is closed to new apps) and failures leave Quick picks only;
+    /// suggestions never raise an error toast.
+    fn fetch_keep_going(&self, seed: &QueueEntry) {
+        if self.keep_going_up_next.borrow().contains_key(&seed.id) {
+            return;
+        }
+        self.keep_going_up_next
+            .borrow_mut()
+            .insert(seed.id, Vec::new());
+        if seed.track.source != SourceKind::YouTubeMusic {
+            return;
+        }
+        let (weak, yt, id) = (self.weak(), self.youtube.clone(), seed.id);
+        let (video, title) = (seed.track.id.clone(), seed.track.title.clone());
+        glib::spawn_future_local(async move {
+            let r = run(yt.up_next(video))
+                .await
+                .map_err(SourceError::Unavailable)
+                .and_then(|r| r);
+            let Some(c) = weak.upgrade() else { return };
+            match r {
+                Ok(tracks) => {
+                    log::debug!("Keep Going: {} up next for “{title}”", tracks.len());
+                    c.remember_tracks(tracks.iter());
+                    if let Some(slot) = c.keep_going_up_next.borrow_mut().get_mut(&id) {
+                        *slot = tracks;
+                    }
+                }
+                Err(e) => log::info!("Keep Going: no up next for “{title}”: {e}"),
+            }
+            c.refresh_keep_going();
+        });
     }
 
     pub fn play_next(&self, track: Track) {
@@ -825,6 +948,7 @@ impl Controller {
         match entry {
             Some(e) => self.start_entry(e),
             None => {
+                self.ended_at_end.set(true);
                 self.player.stop();
                 self.emit(AppEvent::QueueChanged);
             }
@@ -861,6 +985,7 @@ impl Controller {
         if self.resume_at.get().is_some_and(|(id, _)| id != entry.id) {
             self.resume_at.set(None);
         }
+        self.ended_at_end.set(false);
         // Stop the old item first so its EOS/errors/position can't act on the new entry
         // while this one resolves.
         self.player.stop();
@@ -1419,6 +1544,8 @@ impl Controller {
                             SearchItem::Collection(_) => None,
                         },
                     ));
+                    *c.quick_picks.borrow_mut() = Some(suggest::quick_picks(&shelves));
+                    c.refresh_keep_going();
                     on_update(HomeState::Ready(shelves));
                 }
                 Err(e) => {
