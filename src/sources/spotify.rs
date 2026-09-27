@@ -410,7 +410,9 @@ impl Inner {
                             *guard = Some(refreshed.clone())
                         }
                         _ => {
-                            return Err(SourceError::AuthRequired(SIGNED_OUT_MEANWHILE.to_string()));
+                            return Err(SourceError::AuthRequired(
+                                SIGNED_OUT_MEANWHILE.to_string(),
+                            ));
                         }
                     }
                 }

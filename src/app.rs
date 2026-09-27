@@ -120,6 +120,9 @@ pub struct Controller {
     /// Where to resume the restored current entry once it starts playing.
     resume_at: Cell<Option<(EntryId, Duration)>>,
     prefs_save_pending: Cell<bool>,
+    link_seq: Cell<u64>,
+    link_next: Cell<u64>,
+    link_ready: RefCell<std::collections::BTreeMap<u64, Result<Track, String>>>,
     /// Bumped on sign-in/out so library fetches started for the old account are dropped.
     accounts_epoch: Cell<u64>,
     last_saved_position: Cell<u64>,
@@ -195,6 +198,9 @@ impl Controller {
             seen_dirty: Cell::new(false),
             resume_at: Cell::new(None),
             prefs_save_pending: Cell::new(false),
+            link_seq: Cell::new(0),
+            link_next: Cell::new(0),
+            link_ready: RefCell::new(Default::default()),
             accounts_epoch: Cell::new(0),
             last_saved_position: Cell::new(0),
             library_inflight: RefCell::new(Default::default()),
@@ -1203,37 +1209,52 @@ impl Controller {
 
     // ---------------------------------------------------------------- Links (MPRIS OpenUri)
 
+    /// Queue a YouTube/Spotify link (MPRIS `OpenUri`, `banshee <link>`). Links are queued
+    /// in the order they were opened, even though lookups finish in any order.
     pub fn open_uri(&self, uri: &str) {
+        let lookup: futures::future::BoxFuture<'static, Result<Track, String>> =
+            if let Some(link) = banshee::sources::youtube::parse_video_url(uri) {
+                let yt = self.youtube.clone();
+                Box::pin(async move {
+                    run(yt.lookup_video(link.id, link.kind))
+                        .await
+                        .map_err(SourceError::Unavailable)
+                        .and_then(|r| r)
+                        .map_err(|e| describe(SourceKind::YouTubeMusic, &e))
+                })
+            } else if let Some((kind, id)) = banshee::sources::spotify::track_from_url(uri) {
+                let sp = self.spotify.clone();
+                Box::pin(async move {
+                    run(sp.lookup(kind, id))
+                        .await
+                        .map_err(SourceError::Unavailable)
+                        .and_then(|r| r)
+                        .map_err(|e| describe(SourceKind::Spotify, &e))
+                })
+            } else {
+                self.toast_error(format!("Unsupported link: {uri}"));
+                return;
+            };
+        let seq = self.link_seq.get();
+        self.link_seq.set(seq + 1);
         let weak = self.weak();
-        if let Some(link) = banshee::sources::youtube::parse_video_url(uri) {
-            let yt = self.youtube.clone();
-            glib::spawn_future_local(async move {
-                let r = run(yt.lookup_video(link.id, link.kind)).await;
-                let Some(c) = weak.upgrade() else { return };
-                match r.map_err(SourceError::Unavailable).and_then(|r| r) {
+        glib::spawn_future_local(async move {
+            let r = lookup.await;
+            let Some(c) = weak.upgrade() else { return };
+            c.link_ready.borrow_mut().insert(seq, r);
+            // Flush every consecutive finished lookup, oldest first.
+            loop {
+                let next = c.link_next.get();
+                let Some(r) = c.link_ready.borrow_mut().remove(&next) else {
+                    break;
+                };
+                c.link_next.set(next + 1);
+                match r {
                     Ok(track) => c.enqueue(track),
-                    Err(e) => c.toast_error(format!(
-                        "Couldn’t open link — {}",
-                        describe(SourceKind::YouTubeMusic, &e)
-                    )),
+                    Err(e) => c.toast_error(format!("Couldn’t open link — {e}")),
                 }
-            });
-        } else if let Some((kind, id)) = banshee::sources::spotify::track_from_url(uri) {
-            let sp = self.spotify.clone();
-            glib::spawn_future_local(async move {
-                let r = run(sp.lookup(kind, id)).await;
-                let Some(c) = weak.upgrade() else { return };
-                match r.map_err(SourceError::Unavailable).and_then(|r| r) {
-                    Ok(track) => c.enqueue(track),
-                    Err(e) => c.toast_error(format!(
-                        "Couldn’t open link — {}",
-                        describe(SourceKind::Spotify, &e)
-                    )),
-                }
-            });
-        } else {
-            self.toast_error(format!("Unsupported link: {uri}"));
-        }
+            }
+        });
     }
 
     // ---------------------------------------------------------------- GC
