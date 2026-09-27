@@ -207,13 +207,6 @@ impl YouTubeMusicSource {
         .boxed()
     }
 
-    /// Resolve without the imported cookies: the retry after a stream was refused, in case
-    /// the signed-in client's URL is what the server rejected.
-    pub fn resolve_anonymous(&self, track: Track) -> BoxFuture<'static, SourceResult<Resolved>> {
-        let inner = self.inner.clone();
-        async move { inner.resolve_with(track, false).await }.boxed()
-    }
-
     /// Delete the jar and drop the authenticated client.
     pub fn sign_out(&self) -> BoxFuture<'static, SourceResult<()>> {
         let inner = self.inner.clone();
@@ -636,10 +629,6 @@ impl Inner {
     }
 
     async fn resolve(&self, track: Track) -> SourceResult<Resolved> {
-        self.resolve_with(track, true).await
-    }
-
-    async fn resolve_with(&self, track: Track, use_cookies: bool) -> SourceResult<Resolved> {
         if track.source != SourceKind::YouTubeMusic {
             return Err(SourceError::Unavailable("not a YouTube item".to_string()));
         }
@@ -648,7 +637,7 @@ impl Inner {
         }
         let video = track.kind == MediaKind::Video;
         // yt-dlp rewrites its --cookies file on exit: hand it a private per-call copy.
-        let jar = if use_cookies && self.signed_in.load(Ordering::SeqCst) {
+        let jar = if self.signed_in.load(Ordering::SeqCst) {
             match cookies::read_jar().map(|text| PrivateTemp::file(text.as_bytes())) {
                 Some(Ok(temp)) => Some(temp),
                 Some(Err(e)) => {

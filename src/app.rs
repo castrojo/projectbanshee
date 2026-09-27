@@ -807,14 +807,7 @@ impl Controller {
                 Some(r) => Ok(r),
                 None => {
                     let busy = c.busy_guard();
-                    // After a refused stream, retry YouTube without the imported cookies.
-                    let fut = if c.retried_entry.get() == Some(entry.id)
-                        && entry.track.source == SourceKind::YouTubeMusic
-                    {
-                        c.youtube.resolve_anonymous(entry.track.clone())
-                    } else {
-                        c.source(entry.track.source).resolve(entry.track.clone())
-                    };
+                    let fut = c.source(entry.track.source).resolve(entry.track.clone());
                     drop(c);
                     let r = run(fut).await;
                     drop(busy);

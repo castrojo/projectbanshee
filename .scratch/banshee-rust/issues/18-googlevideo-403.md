@@ -11,4 +11,5 @@
 
 ## Comments
 
-- 2026-09-26: Retry path verified with a simulated refusal (a fake yt-dlp returning a URL that answers 403 when cookies are passed): the player logged `Forbidden`, re-resolved once without cookies and reached `Playing` (16 s in after 20 s), with no error toast. The real-world 403 remains unexplained and was not reproduced with stale or fresh cookies.
+- 2026-09-26: Retry path verified with a simulated refusal (a fake yt-dlp returning a URL that answers 403): the player logged `Forbidden`, re-resolved once and reached `Playing` (16 s in after 20 s), with no error toast. The real-world 403 remains unexplained and was not reproduced with stale or fresh cookies.
+- 2026-09-26: A cookie-less retry was tried and removed: no evidence cookies cause the 403, and it would break signed-in-only items on retry. Revisit if a real 403 log shows cookie involvement.
