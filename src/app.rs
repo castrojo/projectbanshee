@@ -367,6 +367,11 @@ impl Controller {
             .splice(0, self.queue_store.n_items(), &objs);
         self.emit(AppEvent::QueueChanged);
         self.schedule_save();
+        // Whatever now follows the playing entry gets its stream resolved ahead of time,
+        // so it starts instantly (queued after playback began, reordered, play-next…).
+        if self.current_entry().is_some() && self.player.state() != PlaybackState::Stopped {
+            self.prefetch_next();
+        }
     }
 
     /// Emit the initial state to freshly built UI.
@@ -702,6 +707,7 @@ impl Controller {
             let Some(c) = weak.upgrade() else { return };
             match ev {
                 PlayerEvent::State(s) => {
+                    log::debug!("player state {s:?}");
                     c.last_state.set(Some(*s));
                     if *s == PlaybackState::Playing {
                         c.failures.set(0);
@@ -846,6 +852,15 @@ impl Controller {
             .get(&entry.id)
             .filter(|(t, _)| t.elapsed() < RESOLVED_TTL)
             .map(|(_, r)| r.clone());
+        log::debug!(
+            "starting “{}” ({})",
+            entry.track.title,
+            if cached.is_some() {
+                "pre-resolved"
+            } else {
+                "resolving"
+            }
+        );
         let weak = self.weak();
         glib::spawn_future_local(async move {
             let Some(c) = weak.upgrade() else { return };
@@ -946,6 +961,7 @@ impl Controller {
             let Some(c) = weak.upgrade() else { return };
             match r {
                 Ok(Ok(res)) => {
+                    log::debug!("pre-resolved “{}”", next.track.title);
                     let mut map = c.resolved.borrow_mut();
                     map.retain(|_, (t, _)| t.elapsed() < RESOLVED_TTL);
                     map.insert(next.id, (Instant::now(), res));

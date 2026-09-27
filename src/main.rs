@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 fn main() -> glib::ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("banshee=info"))
+        .format_timestamp_millis()
         .init();
     // Background panics are converted to errors by runtime::run; log any that reach here.
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));

@@ -9,6 +9,10 @@ use super::PlayerError;
 /// ADR 0010: bounded network buffering.
 const BUFFER_SIZE_BYTES: i32 = 4 * 1024 * 1024;
 const BUFFER_DURATION_NS: i64 = 10 * 1_000_000_000;
+/// Fraction of the buffer that must fill before playback starts or resumes. GStreamer's
+/// default (0.6 of 10 s) made every track wait ~3 s; 0.05 starts after ~0.5 s of audio while still
+/// downloading up to 10 s ahead to ride out network stalls.
+const START_WATERMARK: f64 = 0.05;
 
 /// The video sink that renders into a `gdk::Paintable` for the GTK UI.
 pub(super) const PAINTABLE_SINK: &str = "gtk4paintablesink";
@@ -28,6 +32,16 @@ pub(super) fn build_playbin(
         .property("buffer-duration", BUFFER_DURATION_NS)
         .build()
         .map_err(|_| PlayerError::MissingPlugin(format!("GStreamer element “{factory}”")))?;
+    if let Some(bin) = playbin.downcast_ref::<gst::Bin>() {
+        bin.connect_deep_element_added(|_, _, element| {
+            let is_source_bin = element
+                .factory()
+                .is_some_and(|f| f.name() == "urisourcebin");
+            if is_source_bin && element.has_property("high-watermark") {
+                element.set_property("high-watermark", START_WATERMARK);
+            }
+        });
+    }
     let audio = gst::parse::bin_from_description(audio_sink, true)
         .map_err(|e| PlayerError::Pipeline(format!("invalid audio output “{audio_sink}”: {e}")))?;
     playbin.set_property("audio-sink", &audio);
