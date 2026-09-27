@@ -33,4 +33,5 @@ Neither option meets every requirement. A hybrid is allowed.
 - Search never spawns a process; the first result list is one HTTPS round trip, and local fuzzy matches render before it (spec: search engine).
 - InnerTube is an unofficial API; response-shape changes break `ytmapi-rs` parsing. Parse errors surface as a toast naming the source, and the crate is actively maintained upstream (youtui). Bumping it is the fix path.
 - Spotify playback requires Premium. The Web API can rate-limit (HTTP 429); the source honours `Retry-After` and reports it.
+- A browser-imported YouTube session goes stale when the browser rotates its cookies; InnerTube then answers signed-out (`logged_in=0` in `responseContext`). The source reports that as AuthRequired and the app re-imports once from the remembered browser profile.
 - Both sources implement the same Audio Source trait; `resolve` returns either a GStreamer URI or a Spotify URI.

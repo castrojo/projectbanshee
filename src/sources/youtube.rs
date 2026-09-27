@@ -875,7 +875,9 @@ where
     Q::Output: ParseFromContinuable<Q>,
 {
     let mut out = Vec::new();
+    let mut logged_out = false;
     raw_pages(yt, query, |json| {
+        logged_out |= reports_logged_out(json);
         collect_tiles(json, &mut |item| {
             if let (_, SearchItem::Collection(c)) = item
                 && c.kind == kind
@@ -885,9 +887,32 @@ where
         })
     })
     .await?;
+    if logged_out {
+        // YouTube answers with an empty, signed-out page when the imported cookies
+        // have been rotated away by the browser: say so instead of showing nothing.
+        return Err(SourceError::AuthRequired(SESSION_EXPIRED.to_string()));
+    }
     let mut seen = HashSet::new();
     out.retain(|c| seen.insert(c.id.clone()));
     Ok(out)
+}
+
+const SESSION_EXPIRED: &str =
+    "your YouTube Music session has expired; import it again from Accounts";
+
+/// InnerTube reports the session state in `responseContext.serviceTrackingParams`
+/// (`logged_in` = `0` / `1`).
+fn reports_logged_out(json: &Value) -> bool {
+    json.pointer("/responseContext/serviceTrackingParams")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|svc| svc.get("params").and_then(Value::as_array))
+        .flatten()
+        .any(|p| {
+            p.get("key").and_then(Value::as_str) == Some("logged_in")
+                && p.get("value").and_then(Value::as_str) == Some("0")
+        })
 }
 
 /// Every grid tile / list row anywhere in a browse response, in document order.
@@ -1594,6 +1619,15 @@ fn map_ytdlp_failure(stderr: &str) -> SourceError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn logged_out_flag_is_read_from_service_tracking_params() {
+        let out: Value = serde_json::from_str(r#"{"responseContext":{"serviceTrackingParams":[{"service":"CSI","params":[{"key":"c","value":"WEB_REMIX"}]},{"service":"GFEEDBACK","params":[{"key":"logged_in","value":"0"}]}]}}"#).unwrap();
+        let inn: Value = serde_json::from_str(r#"{"responseContext":{"serviceTrackingParams":[{"service":"GFEEDBACK","params":[{"key":"logged_in","value":"1"}]}]}}"#).unwrap();
+        assert!(reports_logged_out(&out));
+        assert!(!reports_logged_out(&inn));
+        assert!(!reports_logged_out(&serde_json::json!({})));
+    }
+
     #[test]
     fn ytdlp_metadata_maps_title_channel_and_duration() {
         let json = br#"{"title":"Never Gonna Give You Up","uploader":"RickAstleyVEVO","channel":"Rick Astley","channel_id":"UCuAXFkgsw1L7xaCfnd5JJOw","duration":212.0,"thumbnail":"https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"}"#;

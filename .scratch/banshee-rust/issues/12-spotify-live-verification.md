@@ -11,3 +11,7 @@
 - [ ] Library shows Spotify playlists/liked/albums/artists/podcasts
 - [ ] A Spotify track plays through GStreamer (Premium) and advances to the next Queue Entry
 - [ ] Non-Premium account shows the Premium-required toast
+
+## Comments
+
+- 2026-09-26: The user has no Spotify account, so live verification waits for someone who does (Premium for playback).

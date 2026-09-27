@@ -170,6 +170,12 @@ impl LibraryView {
                     }
                 });
                 row.add_suffix(&btn);
+                let accounts = gtk::Button::builder()
+                    .label("Accounts…")
+                    .valign(gtk::Align::Center)
+                    .action_name("win.accounts")
+                    .build();
+                row.add_suffix(&accounts);
                 g.add(&row);
                 container.append(&g);
             }

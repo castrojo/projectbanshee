@@ -123,6 +123,8 @@ pub struct Controller {
     link_seq: Cell<u64>,
     /// Entry whose stream was re-resolved after a playback error (retry once).
     retried_entry: Cell<Option<EntryId>>,
+    /// One automatic YouTube session re-import per run.
+    session_refresh_tried: Cell<bool>,
     link_next: Cell<u64>,
     link_ready: RefCell<std::collections::BTreeMap<u64, Result<Track, String>>>,
     /// Bumped on sign-in/out so library fetches started for the old account are dropped.
@@ -202,6 +204,7 @@ impl Controller {
             prefs_save_pending: Cell::new(false),
             link_seq: Cell::new(0),
             retried_entry: Cell::new(None),
+            session_refresh_tried: Cell::new(false),
             link_next: Cell::new(0),
             link_ready: RefCell::new(Default::default()),
             accounts_epoch: Cell::new(0),
@@ -1089,6 +1092,15 @@ impl Controller {
         force: bool,
         on_update: impl Fn(LibraryState) + 'static,
     ) {
+        self.load_library_rc(source, force, Rc::new(on_update));
+    }
+
+    fn load_library_rc(
+        &self,
+        source: SourceKind,
+        force: bool,
+        on_update: Rc<dyn Fn(LibraryState)>,
+    ) {
         let src = self.source(source);
         if !src.is_signed_in() {
             on_update(LibraryState::SignedOut);
@@ -1131,6 +1143,54 @@ impl Controller {
                         sections,
                         refreshing: false,
                     });
+                }
+                Err(SourceError::AuthRequired(why))
+                    if source == SourceKind::YouTubeMusic
+                        && !c.session_refresh_tried.replace(true) =>
+                {
+                    // The browser rotated the session cookies: re-import from the same
+                    // browser profile once, silently, then retry.
+                    let fail = {
+                        let (on_update, weak) = (on_update.clone(), weak.clone());
+                        let msg = describe(source, &SourceError::AuthRequired(why.clone()));
+                        move || match (&have, weak.upgrade()) {
+                            (Some(sections), Some(c)) => {
+                                c.toast_error(format!("Couldn’t refresh the library — {msg}"));
+                                on_update(LibraryState::Ready {
+                                    sections: sections.clone(),
+                                    refreshing: false,
+                                });
+                            }
+                            _ => on_update(LibraryState::Failed(msg.clone())),
+                        }
+                    };
+                    let Some(spec) = banshee::sources::cookies::last_browser_spec() else {
+                        fail();
+                        return;
+                    };
+                    log::info!("YouTube Music session rejected ({why}); re-importing from {spec}");
+                    let busy = c.busy_guard();
+                    let yt = c.youtube.clone();
+                    drop(c);
+                    let refreshed = run(async move {
+                        banshee::sources::cookies::import_from_browser(&spec).await?;
+                        yt.reload_auth().await
+                    })
+                    .await
+                    .map_err(SourceError::Unavailable)
+                    .and_then(|r| r);
+                    drop(busy);
+                    let Some(c) = weak.upgrade() else { return };
+                    match refreshed {
+                        Ok(true) => {
+                            c.toast(ToastSpec::info(
+                                "YouTube Music session refreshed from your browser",
+                            ));
+                            c.search_memo.borrow_mut().clear();
+                            c.load_library_rc(source, true, on_update);
+                        }
+                        Ok(false) | Err(_) => fail(),
+                    }
                 }
                 Err(e) => {
                     let msg = describe(source, &e);

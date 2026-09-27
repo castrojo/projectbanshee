@@ -34,7 +34,7 @@ Your queue, the current item and the second you were at, recent searches and the
 
 Open **Menu → Accounts** (Ctrl+,).
 
-- **YouTube Music**: sign in to music.youtube.com in your browser, close the browser, then choose **Import from Firefox/Chrome/Brave (Flatpak)**, or import an exported `cookies.txt`. Only Flatpak browser profile directories are read (read-only). Only Google/YouTube cookies are kept, in a mode `0600` file in the app's private config directory. Search and playback work without signing in; the Library needs a session.
+- **YouTube Music**: sign in to music.youtube.com in your browser, close the browser, then choose **Import from Firefox/Chrome/Brave (Flatpak)**, or import an exported `cookies.txt`. Only Flatpak browser profile directories are read (read-only). Only Google/YouTube cookies are kept, in a mode `0600` file in the app's private config directory. Search and playback work without signing in; the Library needs a session. Browsers rotate YouTube session cookies; when the imported session stops working, Banshee re-imports it from the same browser profile once, automatically, and otherwise asks you to import again.
 - **Spotify**: **Sign In with Browser** opens Spotify's login page; after you approve, the browser returns to a local page on `127.0.0.1:8898` and Banshee stores a refresh token (mode `0600`). Playback requires Spotify Premium.
 
 **Security limitation:** credentials are plaintext files protected by filesystem permissions, not Secret Service. Do not use Banshee on a shared account before accepting that limitation.

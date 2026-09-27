@@ -65,6 +65,7 @@ pub(crate) fn read_jar() -> Option<String> {
 
 /// Remove the imported jar. Signing out when not signed in succeeds.
 pub fn sign_out() -> SourceResult<()> {
+    let _ = std::fs::remove_file(browser_spec_path());
     match std::fs::remove_file(jar_path()) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -260,7 +261,24 @@ pub async fn import_from_browser(spec: &str) -> SourceResult<()> {
             )));
         }
     };
-    store_filtered(&String::from_utf8_lossy(&raw))
+    store_filtered(&String::from_utf8_lossy(&raw))?;
+    // Remember where the session came from so an expired session can be refreshed.
+    if let Err(e) = crate::paths::write_private(&browser_spec_path(), spec.as_bytes()) {
+        log::warn!("cannot remember the cookie source browser: {e}");
+    }
+    Ok(())
+}
+
+fn browser_spec_path() -> PathBuf {
+    crate::paths::config_dir().join("ytm_browser")
+}
+
+/// The browser profile the current session was imported from, if it came from one.
+pub fn last_browser_spec() -> Option<String> {
+    std::fs::read_to_string(browser_spec_path())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Import an exported Netscape `cookies.txt`, keeping only YouTube/Google cookies.
@@ -268,7 +286,10 @@ pub async fn import_from_file(path: &Path) -> SourceResult<()> {
     let raw = tokio::fs::read(path)
         .await
         .map_err(|e| SourceError::Unavailable(format!("Cannot read {}: {e}", path.display())))?;
-    store_filtered(&String::from_utf8_lossy(&raw))
+    store_filtered(&String::from_utf8_lossy(&raw))?;
+    // This session no longer comes from a browser profile.
+    let _ = std::fs::remove_file(browser_spec_path());
+    Ok(())
 }
 
 fn store_filtered(jar_text: &str) -> SourceResult<()> {
