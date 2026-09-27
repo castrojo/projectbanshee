@@ -642,10 +642,8 @@ impl SearchPage {
                         let found = !items.is_empty();
                         p.remote.borrow_mut().insert(source, items);
                         p.errors.borrow_mut().remove(&source);
-                        if found {
-                            if !p.compact {
-                                p.remember_when_settled(generation, &query);
-                            }
+                        if found && !p.compact {
+                            p.remember_when_settled(generation, &query);
                         }
                     }
                     Err(e) => {
