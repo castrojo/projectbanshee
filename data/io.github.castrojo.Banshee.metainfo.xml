@@ -33,6 +33,11 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.2" date="2026-09-27">
+      <description>
+        <p>First search after launch no longer waits for the YouTube Music client; tracks start about twice as fast; the next track's stream is fetched once, ahead of time.</p>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-09-27">
       <description><p>Source badges are readable in the dark style.</p></description>
     </release>
