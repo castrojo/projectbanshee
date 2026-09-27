@@ -121,6 +121,10 @@ struct Inner {
     auth: RwLock<AuthSlot>,
     signed_in: AtomicBool,
     ytdlp: OsString,
+    /// At most one automatic session re-import per run.
+    refresh_tried: AtomicBool,
+    /// yt-dlp reported that the imported cookies were rotated away.
+    cookies_rotated: AtomicBool,
 }
 
 /// YouTube Music / YouTube / YouTube podcasts Audio Source.
@@ -142,6 +146,8 @@ impl YouTubeMusicSource {
                 anon: OnceCell::new(),
                 auth: RwLock::new(AuthSlot::Unloaded),
                 signed_in: AtomicBool::new(cookies::has_jar()),
+                refresh_tried: AtomicBool::new(false),
+                cookies_rotated: AtomicBool::new(false),
                 ytdlp: cookies::ytdlp_program(),
             }),
         }
@@ -165,6 +171,29 @@ impl YouTubeMusicSource {
                 Err(_) if matches!(*slot, AuthSlot::Missing) => Ok(false),
                 Err(e) => Err(e),
             }
+        }
+        .boxed()
+    }
+
+    /// The browser rotated the imported session: re-import it once from the browser it came
+    /// from (or the only Flatpak browser found) and rebuild the client. `Ok(true)` when a
+    /// fresh session is in place; `Ok(false)` when no automatic refresh is possible.
+    pub fn refresh_session(&self) -> BoxFuture<'static, SourceResult<bool>> {
+        let this = Self {
+            inner: self.inner.clone(),
+        };
+        async move {
+            if this.inner.refresh_tried.swap(true, Ordering::SeqCst) {
+                return Ok(false);
+            }
+            let spec = cookies::last_browser_spec().or_else(|| {
+                let found = cookies::detect_browsers();
+                (found.len() == 1).then(|| found[0].spec.clone())
+            });
+            let Some(spec) = spec else { return Ok(false) };
+            log::info!("YouTube Music session rejected; re-importing from {spec}");
+            cookies::import_from_browser(&spec).await?;
+            this.reload_auth().await
         }
         .boxed()
     }
@@ -563,6 +592,7 @@ impl Inner {
         cmd.args([
             "-J",
             "--skip-download",
+            "--ignore-no-formats-error",
             "--no-playlist",
             "--no-warnings",
             "--no-progress",
@@ -611,14 +641,8 @@ impl Inner {
             None
         };
         let mut cmd = tokio::process::Command::new(&self.ytdlp);
-        cmd.args([
-            "-J",
-            "--no-playlist",
-            "--no-warnings",
-            "--no-progress",
-            "-f",
-        ])
-        .arg(if video { VIDEO_FORMAT } else { AUDIO_FORMAT });
+        cmd.args(["-J", "--no-playlist", "--no-progress", "-f"])
+            .arg(if video { VIDEO_FORMAT } else { AUDIO_FORMAT });
         if video {
             cmd.args(["--extractor-args", VIDEO_EXTRACTOR_ARGS]);
         }
@@ -643,6 +667,10 @@ impl Inner {
             }
         };
         drop(jar);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("cookies are no longer valid") {
+            self.cookies_rotated.store(true, Ordering::SeqCst);
+        }
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             log::warn!("yt-dlp failed for {}: {}", track.id, stderr.trim());
@@ -681,8 +709,29 @@ impl AudioSource for YouTubeMusicSource {
     }
 
     fn resolve(&self, track: Track) -> BoxFuture<'static, SourceResult<Resolved>> {
-        let inner = self.inner.clone();
-        async move { inner.resolve(track).await }.boxed()
+        let this = Self {
+            inner: self.inner.clone(),
+        };
+        async move {
+            let r = this.inner.resolve(track).await;
+            // Playback still works signed out; refresh the session in the background.
+            if this.inner.cookies_rotated.swap(false, Ordering::SeqCst) {
+                let refresh = this.refresh_session();
+                tokio::spawn(async move {
+                    match refresh.await {
+                        Ok(true) => log::info!(
+                            "YouTube Music session refreshed after yt-dlp reported rotated cookies"
+                        ),
+                        Ok(false) => log::warn!(
+                            "YouTube Music cookies were rotated; import the session again"
+                        ),
+                        Err(e) => log::warn!("refreshing the YouTube Music session failed: {e}"),
+                    }
+                });
+            }
+            r
+        }
+        .boxed()
     }
 }
 

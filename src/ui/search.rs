@@ -44,6 +44,11 @@ pub struct SearchPage {
 
 type OpenCollection = Box<dyn Fn(Collection)>;
 
+fn is_link(q: &str) -> bool {
+    banshee::sources::youtube::parse_video_url(q).is_some()
+        || banshee::sources::spotify::track_from_url(q).is_some()
+}
+
 fn item_key(i: &SearchItem) -> String {
     match i {
         SearchItem::Track(t) => t.key(),
@@ -170,6 +175,14 @@ impl SearchPage {
         let searching = status("", "Searching…", "");
         searching.set_paintable(Some(&adw::SpinnerPaintable::new(Some(&searching))));
         stack.add_named(&searching, Some("searching"));
+        stack.add_named(
+            &status(
+                "insert-link-symbolic",
+                "Queue This Link",
+                "Press Enter to add it to the queue.",
+            ),
+            Some("link"),
+        );
         stack.add_named(
             &status(
                 "edit-find-symbolic",
@@ -439,6 +452,18 @@ impl SearchPage {
             self.stack.set_visible_child_name("empty");
             return;
         }
+        // A pasted link is queued as is on Enter; never searched or remembered.
+        if is_link(&q) {
+            self.ctl.set_last_search("", self.filter.get());
+            self.remote.borrow_mut().clear();
+            self.errors.borrow_mut().clear();
+            self.pending.set(0);
+            self.spinner.set_visible(false);
+            self.banner.set_revealed(false);
+            self.store.remove_all();
+            self.stack.set_visible_child_name("link");
+            return;
+        }
         // Memoised remote results show instantly.
         let filter = self.filter.get();
         self.ctl.set_last_search(&q, filter);
@@ -645,9 +670,7 @@ impl SearchPage {
     fn queue_selected(&self, play_next: bool) {
         // A pasted YouTube / YouTube Music / Spotify link is queued as is.
         let q = self.query();
-        if banshee::sources::youtube::parse_video_url(&q).is_some()
-            || banshee::sources::spotify::track_from_url(&q).is_some()
-        {
+        if is_link(&q) {
             self.ctl.open_uri(&q);
             self.entry.select_region(0, -1);
             return;

@@ -123,8 +123,6 @@ pub struct Controller {
     link_seq: Cell<u64>,
     /// Entry whose stream was re-resolved after a playback error (retry once).
     retried_entry: Cell<Option<EntryId>>,
-    /// One automatic YouTube session re-import per run.
-    session_refresh_tried: Cell<bool>,
     link_next: Cell<u64>,
     link_ready: RefCell<std::collections::BTreeMap<u64, Result<Track, String>>>,
     /// Bumped on sign-in/out so library fetches started for the old account are dropped.
@@ -204,7 +202,6 @@ impl Controller {
             prefs_save_pending: Cell::new(false),
             link_seq: Cell::new(0),
             retried_entry: Cell::new(None),
-            session_refresh_tried: Cell::new(false),
             link_next: Cell::new(0),
             link_ready: RefCell::new(Default::default()),
             accounts_epoch: Cell::new(0),
@@ -916,8 +913,14 @@ impl Controller {
 
     pub fn set_volume(&self, v: f64) {
         self.player.set_volume(v.clamp(0.0, 1.0));
-        self.prefs.borrow_mut().volume = v.clamp(0.0, 1.0);
         self.emit(AppEvent::ModesChanged);
+        self.update_prefs(|p| p.volume = v.clamp(0.0, 1.0));
+    }
+
+    /// Change a preference and save it shortly after (not only on window close, which
+    /// logout/SIGTERM never emits).
+    pub fn update_prefs(&self, f: impl FnOnce(&mut Prefs)) {
+        f(&mut self.prefs.borrow_mut());
         if self.prefs_save_pending.replace(true) {
             return;
         }
@@ -1144,12 +1147,9 @@ impl Controller {
                         refreshing: false,
                     });
                 }
-                Err(SourceError::AuthRequired(why))
-                    if source == SourceKind::YouTubeMusic
-                        && !c.session_refresh_tried.replace(true) =>
-                {
-                    // The browser rotated the session cookies: re-import from the same
-                    // browser profile once, silently, then retry.
+                Err(SourceError::AuthRequired(why)) if source == SourceKind::YouTubeMusic => {
+                    // The browser rotated the session cookies: the source re-imports once
+                    // from the browser profile, then we retry.
                     let fail = {
                         let (on_update, weak) = (on_update.clone(), weak.clone());
                         let msg = describe(source, &SourceError::AuthRequired(why.clone()));
@@ -1164,21 +1164,13 @@ impl Controller {
                             _ => on_update(LibraryState::Failed(msg.clone())),
                         }
                     };
-                    let Some(spec) = banshee::sources::cookies::last_browser_spec() else {
-                        fail();
-                        return;
-                    };
-                    log::info!("YouTube Music session rejected ({why}); re-importing from {spec}");
                     let busy = c.busy_guard();
-                    let yt = c.youtube.clone();
+                    let refresh = c.youtube.refresh_session();
                     drop(c);
-                    let refreshed = run(async move {
-                        banshee::sources::cookies::import_from_browser(&spec).await?;
-                        yt.reload_auth().await
-                    })
-                    .await
-                    .map_err(SourceError::Unavailable)
-                    .and_then(|r| r);
+                    let refreshed = run(refresh)
+                        .await
+                        .map_err(SourceError::Unavailable)
+                        .and_then(|r| r);
                     drop(busy);
                     let Some(c) = weak.upgrade() else { return };
                     match refreshed {
@@ -1233,10 +1225,27 @@ impl Controller {
             let Some(c) = weak.upgrade() else { return };
             let busy = c.busy_guard();
             drop(c);
-            let r = run(src.collection(collection.clone())).await;
+            let mut r = run(src.collection(collection.clone()))
+                .await
+                .map_err(SourceError::Unavailable)
+                .and_then(|r| r);
+            // An expired YouTube session: refresh it from the browser once and retry.
+            if matches!(r, Err(SourceError::AuthRequired(_)))
+                && collection.source == SourceKind::YouTubeMusic
+            {
+                let Some(c) = weak.upgrade() else { return };
+                let refresh = c.youtube.refresh_session();
+                drop(c);
+                if let Ok(Ok(true)) = run(refresh).await {
+                    r = run(src.collection(collection.clone()))
+                        .await
+                        .map_err(SourceError::Unavailable)
+                        .and_then(|r| r);
+                }
+            }
             drop(busy);
             let Some(c) = weak.upgrade() else { return };
-            match r.map_err(SourceError::Unavailable).and_then(|r| r) {
+            match r {
                 Ok(tracks) => {
                     c.cache_put(ns, &key, &tracks);
                     c.remember_tracks(tracks.iter());

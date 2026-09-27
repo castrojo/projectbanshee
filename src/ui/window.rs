@@ -110,7 +110,9 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         .min_sidebar_width(300.0)
         .max_sidebar_width(420.0)
         .sidebar_width_fraction(0.32)
-        .show_sidebar(true)
+        .show_sidebar(ctl.prefs.borrow().show_queue)
+        // We decide sidebar visibility on collapse/uncollapse (from the saved preference).
+        .pin_sidebar(true)
         .build();
     queue_toggle
         .bind_property("active", &split, "show-sidebar")
@@ -172,19 +174,43 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         Some(&None::<gtk::Widget>.to_value()),
     );
     bp.add_setter(&switcher_bar, "reveal", Some(&true.to_value()));
-    for w in &now.compact_widgets {
-        bp.add_setter(w, "visible", Some(&false.to_value()));
+    // Shuffle/repeat/volume visibility has one owner: (narrow, mini) -> visible.
+    let narrow = Rc::new(Cell::new(false));
+    let mini_on = Rc::new(Cell::new(false));
+    let sync_extras: Rc<dyn Fn()> = {
+        let (narrow, mini_on, compact) =
+            (narrow.clone(), mini_on.clone(), now.compact_widgets.clone());
+        Rc::new(move || {
+            let show = !narrow.get() && !mini_on.get();
+            for w in &compact {
+                w.set_visible(show);
+            }
+        })
+    };
+    {
+        let (n1, sync1) = (narrow.clone(), sync_extras.clone());
+        bp.connect_apply(move |_| {
+            n1.set(true);
+            sync1();
+        });
+        let (n2, sync2) = (narrow.clone(), sync_extras.clone());
+        bp.connect_unapply(move |_| {
+            n2.set(false);
+            sync2();
+        });
     }
     window.add_breakpoint(bp);
     {
         // Collapsed layout starts with the queue hidden so the search is in focus.
         let (split, toggle) = (split.clone(), queue_toggle.clone());
+        let ctl = ctl.clone();
         split.connect_collapsed_notify(move |s| {
             if s.is_collapsed() {
                 toggle.set_active(false);
+            } else {
+                toggle.set_active(ctl.prefs.borrow().show_queue);
             }
         });
-        let _ = split;
     }
 
     // Library back navigation from the single header.
@@ -341,22 +367,35 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
 
     let mini = gio::SimpleAction::new_stateful("mini-mode", None, &false.to_variant());
     {
-        let saved = Rc::new(Cell::new((1120, 760)));
-        let (w, outer, bar_handle, exit_mini, compact) = (
+        // Size to return to when leaving Mini Mode (the remembered size if we start in it).
+        let saved = {
+            let p = ctl.prefs.borrow();
+            Rc::new(Cell::new((p.window_width, p.window_height)))
+        };
+        let (w, outer, bar_handle, exit_mini, mini_on, sync_extras) = (
             window.downgrade(),
             outer.clone(),
             bar_handle.clone(),
             exit_mini.clone(),
-            now.compact_widgets.clone(),
+            mini_on.clone(),
+            sync_extras.clone(),
         );
+        let was_maximized = Rc::new(Cell::new(false));
         mini.connect_activate(move |a, _| {
             let Some(w) = w.upgrade() else { return };
             let on = !a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
             a.set_state(&on.to_variant());
             exit_mini.set_visible(on);
+            mini_on.set(on);
+            sync_extras();
             // Mini Mode is just the Now Playing Bar as the window content.
             if on {
-                saved.set((w.width(), w.height()));
+                was_maximized.set(w.is_maximized());
+                if w.is_maximized() {
+                    w.unmaximize();
+                } else if w.width() > 0 && w.height() > 0 {
+                    saved.set((w.width(), w.height()));
+                }
                 outer.remove(&bar_handle);
                 w.set_content(Some(&bar_handle));
                 w.set_default_size(MINI_SIZE.0, MINI_SIZE.1);
@@ -366,11 +405,9 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
                 w.set_content(Some(&outer));
                 let (sw, sh) = saved.get();
                 w.set_default_size(sw.max(640), sh.max(480));
-            }
-            // Shuffle/repeat/volume only when there is room (the breakpoint hides them too).
-            let roomy = !on && w.current_breakpoint().is_none();
-            for c in &compact {
-                c.set_visible(roomy);
+                if was_maximized.get() {
+                    w.maximize();
+                }
             }
         });
     }
@@ -379,28 +416,53 @@ pub fn build(app: &adw::Application, ctl: &Rc<Controller>) -> adw::ApplicationWi
         mini.activate(None);
     }
 
-    // Remember window geometry and layout.
+    // Remember window geometry and layout as it changes (logout never emits close-request).
     {
-        let (ctl, mini, toggle) = (ctl.clone(), mini.clone(), queue_toggle.clone());
-        window.connect_close_request(move |w| {
+        let (ctl, mini) = (ctl.clone(), mini.clone());
+        let track_size = move |w: &adw::ApplicationWindow| {
             let is_mini = mini.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
-            {
-                let mut p = ctl.prefs.borrow_mut();
-                p.maximized = w.is_maximized();
-                if !is_mini && !p.maximized {
-                    let (dw, dh) = w.default_size();
+            let maximized = w.is_maximized();
+            let (dw, dh) = w.default_size();
+            ctl.update_prefs(|p| {
+                p.maximized = maximized;
+                if !is_mini && !maximized && dw > 0 && dh > 0 {
                     p.window_width = dw;
                     p.window_height = dh;
                 }
-                p.mini_mode = is_mini;
-                p.show_queue = toggle.is_active();
+            });
+        };
+        let t = track_size.clone();
+        window.connect_default_width_notify(move |w| t(w));
+        let t = track_size.clone();
+        window.connect_default_height_notify(move |w| t(w));
+        window.connect_maximized_notify(move |w| track_size(w));
+    }
+    {
+        let (ctl, split) = (ctl.clone(), split.clone());
+        queue_toggle.connect_active_notify(move |t| {
+            // Collapsing to a narrow width hides the queue by itself; that isn't a choice.
+            if split.is_collapsed() {
+                return;
             }
+            let on = t.is_active();
+            ctl.update_prefs(|p| p.show_queue = on);
+        });
+    }
+    {
+        let ctl = ctl.clone();
+        mini.connect_state_notify(move |a| {
+            let on = a.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
+            ctl.update_prefs(|p| p.mini_mode = on);
+        });
+    }
+    {
+        let ctl = ctl.clone();
+        window.connect_close_request(move |_| {
             ctl.save_prefs();
             ctl.save_session();
             glib::Propagation::Proceed
         });
     }
-
     {
         let search = search.clone();
         window.connect_map(move |_| search.focus());
