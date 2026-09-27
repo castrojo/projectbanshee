@@ -327,6 +327,9 @@ impl Controller {
     pub fn is_shuffled(&self) -> bool {
         self.queue.borrow().is_shuffled()
     }
+    pub fn queue_entries(&self) -> Vec<QueueEntry> {
+        self.queue.borrow().entries().to_vec()
+    }
     pub fn queue_tracks(&self) -> Vec<Track> {
         self.queue
             .borrow()

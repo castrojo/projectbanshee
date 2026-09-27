@@ -239,3 +239,13 @@
   font-size: 0.85em;
   font-weight: 600;
 }
+
+.mini-quick-add .up-next-list,
+.mini-quick-add .up-next-list row {
+  background: transparent;
+  color: white;
+}
+
+.mini-quick-add .up-next-list row:hover {
+  background-color: alpha(white, 0.1);
+}

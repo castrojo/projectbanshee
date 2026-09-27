@@ -106,7 +106,9 @@ impl MiniPlayer {
         let keys = gtk::EventControllerKey::new();
         let (weak, c) = (Rc::downgrade(&this), ctl.clone());
         keys.connect_key_pressed(move |_, key, _, _| {
-            let Some(m) = weak.upgrade() else { return glib::Propagation::Proceed };
+            let Some(m) = weak.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
             match key {
                 gtk::gdk::Key::Escape if m.add_toggle.is_active() => {
                     m.add_toggle.set_active(false);
@@ -133,10 +135,13 @@ impl MiniPlayer {
                 id.remove();
             }
             let (osd2, hide2) = (osd.clone(), hide.clone());
-            *hide.borrow_mut() = Some(glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
-                hide2.borrow_mut().take();
-                osd2.set_visible(false);
-            }));
+            *hide.borrow_mut() = Some(glib::timeout_add_local_once(
+                std::time::Duration::from_millis(900),
+                move || {
+                    hide2.borrow_mut().take();
+                    osd2.set_visible(false);
+                },
+            ));
             glib::Propagation::Stop
         });
         top.add_controller(scroll);

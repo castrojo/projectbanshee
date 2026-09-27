@@ -24,7 +24,8 @@ pub struct SearchPage {
     selection: gtk::SingleSelection,
     list: gtk::ListView,
     stack: gtk::Stack,
-    recent: gtk::FlowBox,
+    recent: adw::WrapBox,
+    compact: bool,
     home: Option<Rc<crate::ui::home::HomeView>>,
     recent_box: gtk::Box,
     filters: adw::ToggleGroup,
@@ -44,6 +45,55 @@ pub struct SearchPage {
 }
 
 type OpenCollection = Box<dyn Fn(Collection)>;
+
+/// The next few Queue Entries, tap to jump to one (Mini Mode quick-add).
+fn up_next_box(ctl: &Rc<Controller>) -> gtk::Box {
+    let title = gtk::Label::builder().label("Up Next").xalign(0.0).build();
+    title.add_css_class("heading");
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .build();
+    list.add_css_class("up-next-list");
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    root.append(&title);
+    root.append(&list);
+    let render = {
+        let (ctl, list, root) = (Rc::downgrade(ctl), list.clone(), root.clone());
+        move || {
+            let Some(ctl) = ctl.upgrade() else { return };
+            list.remove_all();
+            let start = ctl.current_index().map_or(0, |i| i + 1);
+            let upcoming: Vec<_> = ctl
+                .queue_entries()
+                .into_iter()
+                .skip(start)
+                .take(5)
+                .collect();
+            root.set_visible(!upcoming.is_empty());
+            for (offset, e) in upcoming.into_iter().enumerate() {
+                let row = adw::ActionRow::builder()
+                    .title(glib::markup_escape_text(&e.track.title))
+                    .subtitle(glib::markup_escape_text(&e.track.artist))
+                    .activatable(true)
+                    .build();
+                let idx = start + offset;
+                let c = ctl.clone();
+                row.connect_activated(move |_| c.play_index(idx));
+                list.append(&row);
+            }
+        }
+    };
+    render();
+    ctl.subscribe(move |ev| {
+        if matches!(
+            ev,
+            crate::app::AppEvent::QueueChanged | crate::app::AppEvent::NowPlaying(_)
+        ) {
+            render();
+        }
+    });
+    root
+}
 
 fn is_link(q: &str) -> bool {
     banshee::sources::youtube::parse_video_url(q).is_some()
@@ -154,29 +204,12 @@ impl SearchPage {
             .transition_type(gtk::StackTransitionType::Crossfade)
             .vexpand(true)
             .build();
-        let empty = if compact {
-            let s = status(
-                "",
-                "",
-                "Type, then press Enter to add the top result. Keep typing to add more.",
-            );
-            s.add_css_class("compact");
-            s
-        } else {
-            status(
-                "edit-find-symbolic",
-                "Build Your Queue",
-                "Type to search. Press Enter or + to add the highlighted result and keep typing to add more.",
-            )
-        };
-        let recent = gtk::FlowBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .column_spacing(8)
-            .row_spacing(8)
-            .max_children_per_line(12)
-            .homogeneous(false)
-            .build();
-        recent.update_property(&[gtk::accessible::Property::Label("Recent searches")]);
+        let recent = adw::WrapBox::new();
+        recent.set_child_spacing(8);
+        recent.set_line_spacing(8);
+        recent
+            .upcast_ref::<gtk::Widget>()
+            .update_property(&[gtk::accessible::Property::Label("Recent searches")]);
         let recent_title = gtk::Label::builder()
             .label("Recent Searches")
             .xalign(0.0)
@@ -202,9 +235,22 @@ impl SearchPage {
                 body.set_margin_bottom(24);
                 empty_scroller.set_child(Some(&body));
             }
+            // Mini Mode quick-add: recent searches and what's coming up in the queue.
             None => {
-                empty.set_child(Some(&recent_clamp));
-                empty_scroller.set_child(Some(&empty));
+                let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
+                body.set_margin_start(12);
+                body.set_margin_end(12);
+                body.set_margin_bottom(12);
+                let hint = gtk::Label::builder()
+                    .label("Type, then press Enter to add the top result. Keep typing to add more.")
+                    .wrap(true)
+                    .xalign(0.0)
+                    .build();
+                hint.add_css_class("dim-label");
+                body.append(&hint);
+                body.append(&recent_clamp);
+                body.append(&up_next_box(ctl));
+                empty_scroller.set_child(Some(&body));
             }
         }
         stack.add_named(&empty_scroller, Some("empty"));
@@ -250,6 +296,7 @@ impl SearchPage {
             recent,
             recent_box,
             home,
+            compact,
             filters: filters.clone(),
             spinner,
             banner,
@@ -430,7 +477,7 @@ impl SearchPage {
         self.recent.remove_all();
         let recent = self.ctl.history.borrow().recent.clone();
         self.recent_box.set_visible(!recent.is_empty());
-        for q in recent.into_iter().take(12) {
+        for q in recent.into_iter().take(if self.compact { 6 } else { 12 }) {
             // A chip: tap to search again, × to forget.
             let label = gtk::Button::builder()
                 .label(&q)
